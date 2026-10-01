@@ -1,4 +1,4 @@
-import { Circuit, Gate, GateType, SimulateResponse, BlochVector, Amplitude } from '../types';
+import { Circuit, Gate, GateType, SimulateResponse, BlochVector, Amplitude, CircuitAction } from '../types';
 
 // Qiskit bit order: qubit 0 is the rightmost bit (least significant)
 // Basis state |q1 q0⟩ where q0 is bit 0
@@ -72,62 +72,37 @@ function getGateMatrix(gate: Gate, numQubits: number): Matrix {
     const control = gate.controls[0];
     const target = gate.targets[0];
 
-    // Build the two-qubit gate matrix dynamically based on control and target qubit indices
-    // For Qiskit little-endian: qubit 0 is bit 0 (LSB), qubit 1 is bit 1, etc.
-    // State vector index: |q_{n-1} ... q_1 q_0⟩ where q_0 is bit 0
-    
-    const baseMatrix = Array(4).fill(null).map(() => Array(4).fill({ re: 0, im: 0 }));
-    
-    for (let i = 0; i < 4; i++) {
-      // For 2-qubit system with qubits 0 and 1:
-      // i's bit 0 = q0, bit 1 = q1
-      // Extract qubit values based on actual qubit indices
-      let qControlVal: number, qTargetVal: number;
-      
-      if (control === 0 && target === 1) {
-        // Standard case: control is q0 (bit 0), target is q1 (bit 1)
-        qControlVal = i & 1;
-        qTargetVal = (i >> 1) & 1;
-      } else if (control === 1 && target === 0) {
-        // Reversed: control is q1 (bit 1), target is q0 (bit 0)
-        qControlVal = (i >> 1) & 1;
-        qTargetVal = i & 1;
-      } else {
-        // Same qubit or invalid - shouldn't happen
-        qControlVal = 0;
-        qTargetVal = 0;
-      }
-      
-      let newTargetVal = qTargetVal;
-      if (gate.type === 'CNOT') {
-        if (qControlVal === 1) {
-          newTargetVal = 1 - qTargetVal;
-        }
-      }
-      
-      // Compute new index
-      let newIndex: number;
-      if (control === 0 && target === 1) {
-        newIndex = (newTargetVal << 1) | qControlVal;
-      } else if (control === 1 && target === 0) {
-        newIndex = (qControlVal << 1) | newTargetVal;
-      } else {
-        newIndex = i;
-      }
-      
-      if (gate.type === 'CZ' && qControlVal === 1 && qTargetVal === 1) {
-        baseMatrix[newIndex][i] = { re: -1, im: 0 };
-      } else {
-        baseMatrix[newIndex][i] = { re: 1, im: 0 };
-      }
+    // SRS 4.2: controls and targets must be distinct wires inside the register.
+    if (
+      control === undefined ||
+      target === undefined ||
+      control === target ||
+      control >= numQubits ||
+      target >= numQubits
+    ) {
+      return identity(dim);
     }
 
-    // For 2-qubit case, return the base matrix directly
-    if (numQubits === 2) {
-      return baseMatrix;
+    // Build the full-register matrix from the bit layout: bit q of a basis index
+    // is qubit q, so the control/target wires are read straight off the index.
+    // (This used to be a hard-coded 2x2 block that was only correct for
+    // numQubits === 2 and silently became identity for wider registers.)
+    const matrix: Matrix = Array(dim).fill(null).map(() => Array(dim).fill({ re: 0, im: 0 }));
+
+    for (let i = 0; i < dim; i++) {
+      const controlBit = (i >> control) & 1;
+      const targetBit = (i >> target) & 1;
+
+      let newIndex = i;
+      if (gate.type === 'CNOT' && controlBit === 1) {
+        newIndex = targetBit === 1 ? i & ~(1 << target) : i | (1 << target);
+      }
+
+      const phase = gate.type === 'CZ' && controlBit === 1 && targetBit === 1 ? -1 : 1;
+      matrix[newIndex][i] = complex(phase, 0);
     }
-    // For more qubits, we'd need proper qubit ordering
-    return identity(dim);
+
+    return matrix;
   }
 
   if (gate.type === 'MEASURE') {
@@ -229,7 +204,11 @@ function sampleShots(probabilities: Record<string, number>, shots: number): Reco
   return counts;
 }
 
-export function simulateCircuit(circuit: Circuit, shots: number = 1024): SimulateResponse {
+export function simulateCircuit(
+  circuit: Circuit,
+  shots: number = 1024,
+  actionOverride?: CircuitAction
+): SimulateResponse {
   const numQubits = circuit.num_qubits;
   const dim = 1 << numQubits;
 
@@ -277,24 +256,29 @@ export function simulateCircuit(circuit: Circuit, shots: number = 1024): Simulat
   const hasMeasure = circuit.gates.some(g => g.type === 'MEASURE');
   const counts = hasMeasure ? sampleShots(probabilities, shots) : null;
 
-  // Diff (simplified - would need previous state in real implementation)
-  const diff = { changed: [] as string[] };
-
-  // Build facts packet
-  const prevProbabilities: Record<string, number> = {};
-  for (const [k, v] of Object.entries(probabilities)) {
-    prevProbabilities[k] = v; // In real impl, this would be previous step
-  }
+  // Build facts packet.
+  //
+  // The simulator only sees a circuit, so it cannot know the previous state or
+  // which edit the student just made. Rather than invent values (which made the
+  // tutor quote numbers that never existed), it reports the honest "unknown":
+  // an empty prev_probabilities and no changed states. The caller overrides
+  // `action` when it knows the committed edit.
+  const lastGate = sortedGates[sortedGates.length - 1];
+  const action: CircuitAction =
+    actionOverride ??
+    (lastGate
+      ? { type: 'add_gate', gate: lastGate.type, controls: lastGate.controls, targets: lastGate.targets }
+      : { type: 'reset' });
 
   const facts = {
-    action: { type: 'add_gate' as const, gate: sortedGates[sortedGates.length - 1]?.type },
+    action,
     num_qubits: numQubits,
     probabilities,
-    prev_probabilities: prevProbabilities,
+    prev_probabilities: {} as Record<string, number>,
     amplitudes,
     bloch,
     entangled_qubits: entangledQubits,
-    changed_states: diff.changed,
+    changed_states: [] as string[],
     level: 'beginner' as const,
   };
 
@@ -304,7 +288,7 @@ export function simulateCircuit(circuit: Circuit, shots: number = 1024): Simulat
     bloch,
     entangled_qubits: entangledQubits,
     counts,
-    diff,
+    diff: { changed: [] as string[] },
     backend_agreement: { with: 'cirq', tvd: 0, agree: true },
     facts,
   };

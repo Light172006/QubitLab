@@ -44,13 +44,16 @@ export interface SimulateResponse {
   facts: FactsPacket;
 }
 
+/** The committed edit a facts packet describes. SRS 4.4 `action`. */
+export interface CircuitAction {
+  type: 'add_gate' | 'remove_gate' | 'move_gate' | 'reset' | 'code_edit';
+  gate?: GateType;
+  controls?: number[];
+  targets?: number[];
+}
+
 export interface FactsPacket {
-  action: {
-    type: 'add_gate' | 'remove_gate' | 'move_gate' | 'reset' | 'code_edit';
-    gate?: GateType;
-    controls?: number[];
-    targets?: number[];
-  };
+  action: CircuitAction;
   lesson_step?: string;
   num_qubits: number;
   probabilities: Record<string, number>;
