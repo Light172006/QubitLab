@@ -1,0 +1,10 @@
+node_modules
+dist
+*.tsbuildinfo
+
+# Emitted by `tsc -b` from vite.config.ts
+vite.config.js
+vite.config.d.ts
+
+# Local agent tooling state
+.kilo

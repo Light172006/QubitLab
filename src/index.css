@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mirrors src/design/tokens.js - keep both in step. */
+:root {
+  --brand-navy: #1F497D;
+  --brand-blue: #0070C0;
+  --accent-purple: #6B4E8E;
+  --accent-teal: #4BACC6;
+  --accent-orange: #F79646;
+  --accent-green: #3F6212;
+  --brand-text: #00629F;
+  --accent-orange-text: #9A4E00;
+  --accent-teal-text: #1F6E82;
+  --danger: #A93A37;
+  --bg: #FFFFFF;
+  --surface: #F5F7FA;
+  --text: #111827;
+  --muted: #4B5563;
+  --on-accent: #111827;
+  --font-label: 13px;
+  --tutor-drawer-width: 420px;
+  --tutor-drawer-duration: 250ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0F172A;
+    --surface: #1E293B;
+    --text: #F1F5F9;
+    --muted: #94A3B8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--surface);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, pre, kbd, samp {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background-color: var(--brand-blue);
+  color: white;
+}
+
+/* Blinking caret for streaming tutor text. */
+.typing-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: var(--brand-text);
+  animation: typing-caret-blink 1s step-end infinite;
+}
+
+@keyframes typing-caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* The tutor drawer: 420px column on desktop, bottom sheet below 1024px. */
+@media (min-width: 1024px) {
+  #tutor-drawer {
+    width: var(--tutor-drawer-width);
+    transition-duration: var(--tutor-drawer-duration);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #tutor-drawer,
+  .typing-caret {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--muted);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text);
+}
