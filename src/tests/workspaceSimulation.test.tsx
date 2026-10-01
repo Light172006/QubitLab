@@ -200,3 +200,39 @@ describe('B6 a code edit must resimulate', () => {
     expect(useCodeStore.getState().errors[0].line).toBe(2);
   });
 });
+
+describe('B7 parser errors are rendered in the editor', () => {
+  it('shows the line number and message for invalid code', async () => {
+    renderWorkspace();
+    parseCode.mockResolvedValueOnce({
+      errors: [{ line: 2, code: 'qc.zz(0)', message: 'Unsupported gate method: zz' }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /code/i }));
+    fireEvent.change(screen.getByLabelText('code'), { target: { value: 'qc.zz(0)' } });
+    await flush();
+
+    console.log('B7 rendered error text:', screen.getByText(/Unsupported gate method: zz/).textContent);
+    expect(screen.getByText(/Unsupported gate method: zz/)).toBeInTheDocument();
+    expect(screen.getByText(/^Line 2:/)).toBeInTheDocument();
+  });
+
+  it('clears the error list once the code parses again', async () => {
+    renderWorkspace();
+    parseCode.mockResolvedValueOnce({
+      errors: [{ line: 2, code: 'qc.zz(0)', message: 'Unsupported gate method: zz' }],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /code/i }));
+    const editor = screen.getByLabelText('code');
+    fireEvent.change(editor, { target: { value: 'qc.zz(0)' } });
+    await flush();
+    expect(screen.getByText(/Unsupported gate method: zz/)).toBeInTheDocument();
+
+    parseCode.mockResolvedValueOnce({ circuit: empty });
+    fireEvent.change(editor, { target: { value: 'qc.h(0)' } });
+    await flush();
+
+    console.log('B7 errors after a valid edit:', JSON.stringify(useCodeStore.getState().errors));
+    expect(screen.queryByText(/Unsupported gate method: zz/)).not.toBeInTheDocument();
+  });
+});

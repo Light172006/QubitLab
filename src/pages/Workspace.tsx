@@ -27,7 +27,7 @@ export default function Workspace() {
     pushQuestion,
     clearExplanation,
   } = useTutorStore();
-  const { code, syncStatus, setCode, setSyncStatus, setErrors } = useCodeStore();
+  const { code, syncStatus, setCode, setSyncStatus, errors, setErrors } = useCodeStore();
   const [activeTab, setActiveTab] = useState<'canvas' | 'code'>('canvas');
   const [codeTimeout, setCodeTimeout] = useState<ReturnType<typeof setTimeout>>();
   const isFirstRun = useRef(true);
@@ -214,7 +214,7 @@ export default function Workspace() {
                 code={code}
                 onChange={handleCodeChange}
                 syncStatus={syncStatus}
-                errors={[]}
+                errors={errors}
                 onSync={syncCodeToCanvas}
               />
             )}
