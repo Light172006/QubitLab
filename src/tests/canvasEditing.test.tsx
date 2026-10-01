@@ -1,0 +1,152 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import {
+  CircuitCanvas,
+  isLockedByMeasure,
+  removeGateFromCircuit,
+  moveGateInCircuit,
+} from '../components/canvas/CircuitCanvas';
+import type { Circuit } from '../types';
+
+const empty: Circuit = { version: 1, num_qubits: 2, gates: [] };
+const withH: Circuit = {
+  version: 1,
+  num_qubits: 2,
+  gates: [{ id: 'g1', type: 'H', targets: [0], controls: [], column: 0 }],
+};
+const withMeasureOnQ0: Circuit = {
+  version: 1,
+  num_qubits: 2,
+  gates: [
+    { id: 'g1', type: 'H', targets: [0], controls: [], column: 0 },
+    { id: 'g2', type: 'MEASURE', targets: [0], controls: [], column: 2 },
+  ],
+};
+
+function renderCanvas(circuit: Circuit) {
+  const onChange = vi.fn();
+  render(<CircuitCanvas circuit={circuit} onChange={onChange} numQubits={2} />);
+  return onChange;
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('B2 nothing may be placed after Measure on that wire', () => {
+  it('locks the cells at and after the measurement, not the ones before it', () => {
+    expect(isLockedByMeasure(withMeasureOnQ0, 0, 0)).toBe(false);
+    expect(isLockedByMeasure(withMeasureOnQ0, 0, 1)).toBe(false);
+    expect(isLockedByMeasure(withMeasureOnQ0, 0, 2)).toBe(true);
+    expect(isLockedByMeasure(withMeasureOnQ0, 0, 5)).toBe(true);
+  });
+
+  it('leaves the other wire alone', () => {
+    expect(isLockedByMeasure(withMeasureOnQ0, 1, 5)).toBe(false);
+  });
+
+  it('renders the lock hint only on the cells after the measurement', () => {
+    renderCanvas(withMeasureOnQ0);
+    const locked = screen.getAllByText('Measurement is terminal');
+    // columns 2..9 on q0 only
+    console.log('B2 locked cells:', locked.length);
+    expect(locked).toHaveLength(8);
+    expect(screen.getByRole('gridcell', { name: /^Qubit 0, column 5/ })).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('locked')
+    );
+    expect(screen.getByRole('gridcell', { name: /^Qubit 0, column 1/ }).getAttribute('aria-label')).not.toContain('locked');
+    expect(screen.getByRole('gridcell', { name: /^Qubit 1, column 5/ }).getAttribute('aria-label')).not.toContain('locked');
+  });
+});
+
+describe('B3 deleting a placed gate', () => {
+  it('removes the gate from the circuit', () => {
+    expect(removeGateFromCircuit(withH, 'g1')).toEqual(empty);
+  });
+
+  it('leaves the circuit untouched for an unknown id', () => {
+    expect(removeGateFromCircuit(withH, 'nope')).toBe(withH);
+  });
+
+  it('wires the remove button to onChange', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.mouseEnter(tile);
+    fireEvent.click(screen.getByRole('button', { name: /Remove H gate/ }));
+
+    console.log('B3 onChange calls:', onChange.mock.calls.length);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0]).toEqual(empty);
+  });
+});
+
+describe('B4 moving a placed gate', () => {
+  it('moves a single-qubit gate to a new wire and column', () => {
+    const moved = moveGateInCircuit(withH, 'g1', 1, 4);
+    console.log('B4 moved:', JSON.stringify(moved.gates));
+    expect(moved.gates[0].targets).toEqual([1]);
+    expect(moved.gates[0].column).toBe(4);
+    expect(moved).not.toBe(withH);
+  });
+
+  it('keeps the gate id', () => {
+    expect(moveGateInCircuit(withH, 'g1', 1, 4).gates[0].id).toBe('g1');
+  });
+
+  it('refuses to move onto an occupied cell', () => {
+    const twoGates: Circuit = {
+      version: 1,
+      num_qubits: 2,
+      gates: [
+        { id: 'g1', type: 'H', targets: [0], controls: [], column: 0 },
+        { id: 'g2', type: 'X', targets: [1], controls: [], column: 0 },
+      ],
+    };
+    expect(moveGateInCircuit(twoGates, 'g1', 1, 0)).toBe(twoGates);
+  });
+
+  it('refuses to move a gate to a cell blocked by a measurement', () => {
+    expect(moveGateInCircuit(withMeasureOnQ0, 'g1', 0, 5)).toBe(withMeasureOnQ0);
+  });
+
+  it('moves a two-qubit gate by column only and keeps its wires', () => {
+    const bell: Circuit = {
+      version: 1,
+      num_qubits: 2,
+      gates: [
+        { id: 'g1', type: 'H', targets: [0], controls: [], column: 0 },
+        { id: 'g2', type: 'CNOT', targets: [1], controls: [0], column: 1 },
+      ],
+    };
+    const moved = moveGateInCircuit(bell, 'g2', 0, 5);
+    console.log('B4 bell moved:', JSON.stringify(moved.gates[1]));
+    expect(moved.gates[1].column).toBe(5);
+    expect(moved.gates[1].controls).toEqual([0]);
+    expect(moved.gates[1].targets).toEqual([1]);
+  });
+
+  it('ignores an unknown gate id', () => {
+    expect(moveGateInCircuit(withH, 'nope', 1, 3)).toBe(withH);
+  });
+
+  it('registers placed gates and palette gates as draggables in one context', () => {
+    renderCanvas(withH);
+    const placed = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    const palette = screen.getByRole('listitem', { name: /Pauli-X/ });
+    console.log(
+      'B4 aria-roledescription placed/palette:',
+      placed.getAttribute('aria-roledescription'),
+      '/',
+      palette.getAttribute('aria-roledescription')
+    );
+    expect(placed).toHaveAttribute('aria-roledescription', 'draggable');
+    expect(palette).toHaveAttribute('aria-roledescription', 'draggable');
+  });
+
+  it('keeps the circuit sorted by column', () => {
+    const moved = moveGateInCircuit(withMeasureOnQ0, 'g2', 0, 1);
+    console.log('B4 order after move:', JSON.stringify(moved.gates.map(g => [g.id, g.column])));
+    expect(moved.gates.map(g => g.column)).toEqual([0, 1]);
+  });
+});

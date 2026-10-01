@@ -8,12 +8,13 @@ interface WireProps {
   numColumns: number;
   circuit: Circuit;
   onCellClick: (qubit: number, column: number) => void;
+  onRemoveGate: (gateId: string) => void;
   placingTwoQubit: { gate: Gate; control: number } | null;
   draggedGateType: string | null;
-  hasMeasureAfter: (qubit: number, column: number) => boolean;
+  isLockedByMeasure: (qubit: number, column: number) => boolean;
 }
 
-function CellContent({ gate, isControl, isTarget }: { gate: Gate; isControl: boolean; isTarget: boolean }) {
+function CellContent({ gate, isControl, isTarget, onRemove }: { gate: Gate; isControl: boolean; isTarget: boolean; onRemove: () => void }) {
   const colour = gateFill(gate.type);
 
   if (isControl) {
@@ -68,7 +69,7 @@ function CellContent({ gate, isControl, isTarget }: { gate: Gate; isControl: boo
         </div>
       );
     }
-    return <GateTile gate={gate} onRemove={() => {}} onMove={() => {}} disabled={false} />;
+    return <GateTile gate={gate} onRemove={onRemove} disabled={false} />;
   }
 
   return null;
@@ -121,16 +122,17 @@ export function Wire({
   numColumns,
   circuit,
   onCellClick,
+  onRemoveGate,
   placingTwoQubit,
   draggedGateType,
-  hasMeasureAfter,
+  isLockedByMeasure,
 }: WireProps) {
   const gatesOnWire = circuit.gates.filter(g => g.targets.includes(qubit) || g.controls.includes(qubit));
   const isControlTarget = placingTwoQubit && (placingTwoQubit.control === qubit || placingTwoQubit.gate.targets.includes(qubit));
 
   const renderCell = (column: number) => {
     const gate = gatesOnWire.find(g => g.column === column);
-    const canDrop = !hasMeasureAfter(qubit, column);
+    const canDrop = !isLockedByMeasure(qubit, column);
     const isPlacingTarget = !!placingTwoQubit && placingTwoQubit.gate.targets.length === 0 && placingTwoQubit.control !== qubit;
     const handleClick = () => {
       if (placingTwoQubit) onCellClick(qubit, column);
@@ -150,6 +152,7 @@ export function Wire({
             gate={gate}
             isControl={gate.controls.includes(qubit)}
             isTarget={gate.targets.includes(qubit)}
+            onRemove={() => onRemoveGate(gate.id)}
           />
         ) : null}
       </DroppableCell>
