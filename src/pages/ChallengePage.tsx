@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChallengeStore, useCircuitStore, useUIStore, useTutorStore } from '../store';
 import { api } from '../api/client';
@@ -28,6 +28,13 @@ export default function ChallengePage() {
   } = useTutorStore();
   const [simulateTimeout, setSimulateTimeout] = useState<ReturnType<typeof setTimeout>>();
   const [result, setResult] = useState<{ passed: boolean; fidelity: number; message: string } | null>(null);
+  // Monotonic token identifying the newest simulation/question stream. Clearing the
+  // debounce timer does not stop a stream that already started, so every write to
+  // the tutor is gated on this token instead.
+  const runIdRef = useRef(0);
+
+  // Unmounting mid-stream would keep appending to a store nobody reads.
+  useEffect(() => () => { runIdRef.current += 1; }, []);
 
   useEffect(() => {
     if (id) {
@@ -41,17 +48,23 @@ export default function ChallengePage() {
   const handleCircuitChange = async (newCircuit: typeof circuit) => {
     setCircuit(newCircuit);
     if (simulateTimeout) clearTimeout(simulateTimeout);
+    // Supersede any stream still in flight from the previous circuit.
+    const runId = ++runIdRef.current;
+    const isStale = () => runIdRef.current !== runId;
     const timeout = setTimeout(async () => {
       const result = await api.simulate(newCircuit, useUIStore.getState().shots);
+      if (isStale()) return;
       const facts = result.facts;
       setFactsPacket(facts);
       clearExplanation();
       setStreaming(true);
       for await (const event of api.explain(facts, level)) {
+        if (isStale()) return;
         if (event.type === 'token') appendExplanation(event.content || '');
         else if (event.type === 'fallback') setFallback(true);
         else if (event.type === 'done') break;
       }
+      if (isStale()) return;
       setStreaming(false);
       commitExplanation();
     }, 400);
@@ -182,14 +195,20 @@ export default function ChallengePage() {
         <TutorDrawer
           onAsk={async (question) => {
             if (!factsPacket) return;
+            // Shares the run token with handleCircuitChange: a newer circuit or a
+            // newer question supersedes this stream.
+            const runId = ++runIdRef.current;
+            const isStale = () => runIdRef.current !== runId;
             pushQuestion(question);
             setStreaming(true);
             clearExplanation();
             for await (const event of api.ask(question, factsPacket, level)) {
+              if (isStale()) return;
               if (event.type === 'token') appendExplanation(event.content || '');
               else if (event.type === 'fallback') setFallback(true);
               else if (event.type === 'done') break;
             }
+            if (isStale()) return;
             setStreaming(false);
             commitExplanation();
           }}

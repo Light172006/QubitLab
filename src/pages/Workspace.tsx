@@ -31,6 +31,7 @@ export default function Workspace() {
   const [activeTab, setActiveTab] = useState<'canvas' | 'code'>('canvas');
   const [codeTimeout, setCodeTimeout] = useState<ReturnType<typeof setTimeout>>();
   const isFirstRun = useRef(true);
+  const runIdRef = useRef(0);
 
   useEffect(() => {
     api.getLessons().then((lessons) => {
@@ -50,17 +51,24 @@ export default function Workspace() {
       isFirstRun.current = false;
       return;
     }
+    // Only the newest run may write to the tutor. Superseded runs stop at their
+    // next checkpoint instead of interleaving tokens from a stale circuit.
+    const runId = ++runIdRef.current;
+    const isStale = () => runIdRef.current !== runId;
     const timeout = setTimeout(async () => {
       const result = await api.simulate(circuit, useUIStore.getState().shots);
+      if (isStale()) return;
       const facts = result.facts;
       setFactsPacket(facts);
       clearExplanation();
       setStreaming(true);
       for await (const event of api.explain(facts, level)) {
+        if (isStale()) return;
         if (event.type === 'token') appendExplanation(event.content || '');
         else if (event.type === 'fallback') setFallback(true);
         else if (event.type === 'done') break;
       }
+      if (isStale()) return;
       setStreaming(false);
       // Files this explanation into the tutor scrollback, open drawer or not.
       commitExplanation();
@@ -68,6 +76,9 @@ export default function Workspace() {
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circuit]);
+
+  // Unmounting mid-stream would otherwise keep appending to a store nobody reads.
+  useEffect(() => () => { runIdRef.current += 1; }, []);
 
   const handleCircuitChange = (newCircuit: typeof circuit) => {
     setCircuit(newCircuit);
@@ -243,14 +254,20 @@ export default function Workspace() {
         <TutorDrawer
           onAsk={async (question) => {
             if (!factsPacket) return;
+            // Shares the run token with the simulation effect: a newer circuit or a
+            // newer question supersedes this stream.
+            const runId = ++runIdRef.current;
+            const isStale = () => runIdRef.current !== runId;
             pushQuestion(question);
             setStreaming(true);
             clearExplanation();
             for await (const event of api.ask(question, factsPacket, level)) {
+              if (isStale()) return;
               if (event.type === 'token') appendExplanation(event.content || '');
               else if (event.type === 'fallback') setFallback(true);
               else if (event.type === 'done') break;
             }
+            if (isStale()) return;
             setStreaming(false);
             commitExplanation();
           }}
