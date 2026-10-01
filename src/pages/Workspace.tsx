@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCircuitStore, useUIStore, useLessonStore, useChallengeStore, useTutorStore, useCodeStore } from '../store';
 import { api } from '../api/client';
@@ -29,7 +29,8 @@ export default function Workspace() {
   } = useTutorStore();
   const { code, syncStatus, setCode, setSyncStatus, setErrors } = useCodeStore();
   const [activeTab, setActiveTab] = useState<'canvas' | 'code'>('canvas');
-  const [simulateTimeout, setSimulateTimeout] = useState<ReturnType<typeof setTimeout>>();
+  const [codeTimeout, setCodeTimeout] = useState<ReturnType<typeof setTimeout>>();
+  const isFirstRun = useRef(true);
 
   useEffect(() => {
     api.getLessons().then((lessons) => {
@@ -39,11 +40,18 @@ export default function Workspace() {
     });
   }, [currentLesson, setCurrentLesson]);
 
-  const handleCircuitChange = async (newCircuit: typeof circuit) => {
-    setCircuit(newCircuit);
-    if (simulateTimeout) clearTimeout(simulateTimeout);
+  /**
+   * Simulation is driven by the circuit in the store, so every committed change
+   * (gate drop, undo, redo, reset, code edit) refreshes the state panel and the
+   * tutor. The initial mount is skipped so an untouched circuit stays silent.
+   */
+  useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false;
+      return;
+    }
     const timeout = setTimeout(async () => {
-      const result = await api.simulate(newCircuit, useUIStore.getState().shots);
+      const result = await api.simulate(circuit, useUIStore.getState().shots);
       const facts = result.facts;
       setFactsPacket(facts);
       clearExplanation();
@@ -57,16 +65,22 @@ export default function Workspace() {
       // Files this explanation into the tutor scrollback, open drawer or not.
       commitExplanation();
     }, 400);
-    setSimulateTimeout(timeout);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [circuit]);
+
+  const handleCircuitChange = (newCircuit: typeof circuit) => {
+    setCircuit(newCircuit);
   };
 
-  const handleCodeChange = async (newCode: string) => {
+  const handleCodeChange = (newCode: string) => {
     setCode(newCode);
-    if (simulateTimeout) clearTimeout(simulateTimeout);
+    if (codeTimeout) clearTimeout(codeTimeout);
     const timeout = setTimeout(async () => {
       try {
         const result = await api.parseCode(newCode);
         if ('circuit' in result) {
+          // setCircuit triggers the simulation effect above.
           setCircuit(result.circuit);
           setSyncStatus('synced');
           setErrors([]);
@@ -79,7 +93,7 @@ export default function Workspace() {
         setErrors([{ line: 0, code: '', message: 'Parse failed' }]);
       }
     }, 400);
-    setSimulateTimeout(timeout);
+    setCodeTimeout(timeout);
   };
 
   const syncCodeToCanvas = async () => {
