@@ -18,3 +18,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix='QUBITLAB_', env_file='.env', env_file_encoding='utf-8')
 
 settings = Settings()
+
+# Automatically fix database URL for asyncpg if standard postgres URL is provided
+if settings.DATABASE_URL.startswith("postgres://"):
+    settings.DATABASE_URL = settings.DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif settings.DATABASE_URL.startswith("postgresql://"):
+    settings.DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
