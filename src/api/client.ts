@@ -1,6 +1,7 @@
 import type { Circuit, SimulateResponse, FactsPacket, TutorEvent, Lesson, Challenge, User, InstructorOverview, StudentProgress } from '../types';
 
 const USE_MOCK = (import.meta as any).env?.VITE_USE_MOCK !== 'false';
+const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
 
 const mockDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -10,7 +11,7 @@ let mockChallenges: Challenge[] = [];
 
 export const api = {
   async register(email: string, password: string, name: string): Promise<User> {
-    const res = await fetch('/api/auth/register', {
+    const res = await fetch(`${API_BASE}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name })
@@ -25,7 +26,7 @@ export const api = {
   },
 
   async login(email: string, password: string): Promise<User> {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -44,7 +45,7 @@ export const api = {
     if (!token) return null;
 
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -135,7 +136,7 @@ export const api = {
     await mockDelay(100);
     if (!mockUser) throw new Error('Not authenticated');
     const { getMockProgress } = await import('../mock/dashboardData');
-    return getMockProgress(mockUser.id);
+    return getMockProgress((mockUser as User).id);
   },
 
   async getInstructorOverview(): Promise<InstructorOverview> {
