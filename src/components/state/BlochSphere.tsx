@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { BlochVector } from '../../types';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 
 interface BlochSphereProps {
   bloch: BlochVector;
@@ -196,19 +197,33 @@ export function BlochSphere({ bloch, isEntangled }: BlochSphereProps) {
     }
   }, [bloch, isEntangled]);
 
+  const ariaLabel = `Bloch sphere for qubit ${bloch.q}${isEntangled ? ', entangled' : ', pure'}. Vector: (${bloch.x.toFixed(2)}, ${bloch.y.toFixed(2)}, ${bloch.z.toFixed(2)}), purity ${bloch.purity.toFixed(2)}`;
+
   return (
-    <div
-      ref={mountRef}
-      className="relative w-20 h-20"
-      role="img"
-      aria-label={`Bloch sphere for qubit ${bloch.q}${isEntangled ? ', entangled' : ', pure'}. Vector: (${bloch.x.toFixed(2)}, ${bloch.y.toFixed(2)}, ${bloch.z.toFixed(2)}), purity ${bloch.purity.toFixed(2)}`}
-    >
-      {isEntangled && (
-        <div className="absolute -top-2 -right-2 flex items-center gap-1 px-1.5 py-0.5 bg-orange-tint text-accent-text-orange text-label font-medium rounded-full border border-orange/30">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-orange-strong" aria-hidden="true" />
-          Entangled
+    <ErrorBoundary
+      fallback={() => (
+        <div
+          className="relative w-20 h-20 flex items-center justify-center bg-gray-50 border border-gray-200 rounded text-[10px] font-mono text-muted"
+          role="img"
+          aria-label={ariaLabel}
+        >
+          Sphere unavailable
         </div>
       )}
-    </div>
+    >
+      <div
+        ref={mountRef}
+        className="relative w-20 h-20"
+        role="img"
+        aria-label={ariaLabel}
+      >
+        {isEntangled && (
+          <div className="absolute -top-2 -right-2 flex items-center gap-1 px-1.5 py-0.5 bg-orange-tint text-accent-text-orange text-label font-medium rounded-full border border-orange/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-orange-strong" aria-hidden="true" />
+            Entangled
+          </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }

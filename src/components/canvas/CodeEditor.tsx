@@ -1,6 +1,7 @@
 import Editor from '@monaco-editor/react';
 import { useEffect, useRef, useState } from 'react';
 import { Download, Copy, AlertCircle, CheckCircle, RadioTower, Info } from 'lucide-react';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 
 // qubitlab-light custom theme definition
 const QUBITLAB_LIGHT_THEME = {
@@ -205,27 +206,40 @@ export function CodeEditor({ code, onChange, syncStatus, errors, onSync }: CodeE
             spellCheck={false}
           />
         ) : (
-          <Editor
-            height="100%"
-            defaultLanguage="qiskit"
-            theme={theme}
-            value={code}
-            onChange={handleEditorChange}
-            onMount={handleEditorMount}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              fontFamily: "'JetBrains Mono', monospace",
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              tabSize: 4,
-              wordWrap: 'off',
-              renderLineHighlight: 'line',
-              padding: { top: 12, bottom: 12 },
-              renderWhitespace: 'selection',
-            }}
-          />
+          <ErrorBoundary
+            fallback={() => (
+              <textarea
+                aria-label="code"
+                className="w-full h-full p-4 font-mono text-sm text-text bg-white border-0 resize-none focus:outline-none"
+                value={code}
+                onChange={(e) => handleEditorChange(e.target.value)}
+                placeholder="Editor unavailable (basic mode)"
+                spellCheck={false}
+              />
+            )}
+          >
+            <Editor
+              height="100%"
+              defaultLanguage="qiskit"
+              theme={theme}
+              value={code}
+              onChange={handleEditorChange}
+              onMount={handleEditorMount}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                fontFamily: "'JetBrains Mono', monospace",
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 4,
+                wordWrap: 'off',
+                renderLineHighlight: 'line',
+                padding: { top: 12, bottom: 12 },
+                renderWhitespace: 'selection',
+              }}
+            />
+          </ErrorBoundary>
         )}
       </div>
 
