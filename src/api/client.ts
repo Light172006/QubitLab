@@ -5,12 +5,50 @@ const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
 
 const mockDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-let mockUser: User | null = null;
+const MOCK_USER_KEY = 'qubitlab_mock_user';
+
+/** Mock user carries the email too; the User type has no email field, so we
+ *  widen it locally rather than change the shared contract. */
+type MockUser = User & { email: string };
+
 let mockLessons: Lesson[] = [];
 let mockChallenges: Challenge[] = [];
 
+function readMockUser(): MockUser | null {
+  try {
+    const raw = localStorage.getItem(MOCK_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.id) return null;
+    return parsed as MockUser;
+  } catch {
+    return null;
+  }
+}
+
+function makeMockUser(email: string, name: string, role?: 'student' | 'instructor'): MockUser {
+  const emailValue = email.trim();
+  const resolvedRole =
+    role ?? (emailValue.toLowerCase().includes('instructor') ? 'instructor' : 'student');
+  const user: MockUser = {
+    id: `mock-${emailValue.toLowerCase()}`,
+    email: emailValue,
+    name: name.trim() || emailValue.split('@')[0] || 'Learner',
+    role: resolvedRole,
+    token: 'mock-token',
+  };
+  localStorage.setItem(MOCK_USER_KEY, JSON.stringify(user));
+  return user;
+}
+
 export const api = {
-  async register(email: string, password: string, name: string): Promise<User> {
+  async register(email: string, password: string, name: string, role?: 'student' | 'instructor'): Promise<User> {
+    if (USE_MOCK) {
+      if (!email.trim() || !password.trim()) {
+        throw new Error('Please fill out all required fields');
+      }
+      return makeMockUser(email, name, role);
+    }
     const res = await fetch(`${API_BASE}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -26,6 +64,12 @@ export const api = {
   },
 
   async login(email: string, password: string): Promise<User> {
+    if (USE_MOCK) {
+      if (!email.trim() || !password.trim()) {
+        throw new Error('Please fill out all required fields');
+      }
+      return makeMockUser(email, '');
+    }
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,6 +85,9 @@ export const api = {
   },
 
   async getCurrentUser(): Promise<User | null> {
+    if (USE_MOCK) {
+      return readMockUser();
+    }
     const token = localStorage.getItem('qubitlab_token');
     if (!token) return null;
 
@@ -63,6 +110,10 @@ export const api = {
   },
 
   async logout(): Promise<void> {
+    if (USE_MOCK) {
+      localStorage.removeItem(MOCK_USER_KEY);
+      return;
+    }
     localStorage.removeItem('qubitlab_token');
   },
 
@@ -134,13 +185,16 @@ export const api = {
 
   async getProgress(): Promise<StudentProgress> {
     await mockDelay(100);
-    if (!mockUser) throw new Error('Not authenticated');
+    const user = USE_MOCK ? readMockUser() : null;
+    if (!user) throw new Error('Not authenticated');
     const { getMockProgress } = await import('../mock/dashboardData');
-    return getMockProgress((mockUser as User).id);
+    return getMockProgress(user.id);
   },
 
   async getInstructorOverview(): Promise<InstructorOverview> {
     await mockDelay(150);
+    const user = USE_MOCK ? readMockUser() : null;
+    if (!user) throw new Error('Not authenticated');
     const { getInstructorOverview } = await import('../mock/dashboardData');
     return getInstructorOverview();
   },
@@ -153,5 +207,5 @@ export const api = {
 };
 
 if (!USE_MOCK) {
-  console.warn('Real API not implemented yet. Set VITE_USE_MOCK=true to use mock layer.');
+  console.info('QubitLab is using the real API. Set VITE_USE_MOCK=true to use the mock layer.');
 }

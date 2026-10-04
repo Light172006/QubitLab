@@ -27,7 +27,7 @@ export default function Login() {
     try {
       let user;
       if (isRegister) {
-        user = await api.register(email, password, name);
+        user = await api.register(email, password, name, role);
       } else {
         user = await api.login(email, password);
       }
