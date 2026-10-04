@@ -20,7 +20,6 @@
   --muted: #4B5563;
   --on-accent: #111827;
   --font-label: 13px;
-  --tutor-drawer-width: 420px;
   --tutor-drawer-duration: 250ms;
 }
 
@@ -90,12 +89,35 @@ code, pre, kbd, samp {
   50% { opacity: 0; }
 }
 
-/* The tutor drawer: 420px column on desktop, bottom sheet below 1024px. */
+/* The tutor dock: 380px at >=1280, 320px at 1024-1279, full-width
+   bottom sheet below 1024 (positioning handled by TutorDrawer). */
+:root {
+  --tutor-drawer-width: 380px;
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  :root {
+    --tutor-drawer-width: 320px;
+  }
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --tutor-drawer-width: 100%;
+  }
+}
+
 @media (min-width: 1024px) {
   #tutor-drawer {
     width: var(--tutor-drawer-width);
     transition-duration: var(--tutor-drawer-duration);
   }
+}
+
+/* The page itself must never scroll sideways; the wire grid
+   scrolls inside its own container instead. */
+html, body {
+  overflow-x: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
