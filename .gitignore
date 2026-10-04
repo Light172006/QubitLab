@@ -8,3 +8,9 @@ vite.config.d.ts
 
 # Local agent tooling state
 .kilo
+
+# Secrets & Environment files
+.env
+.env.*
+*.db
+*.db-*
