@@ -270,6 +270,7 @@ export default function Workspace() {
               onStepChange={setCurrentStep}
               onStepComplete={markStepComplete}
               circuit={circuit}
+              facts={factsPacket}
             />
           )}
 
