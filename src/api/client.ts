@@ -9,20 +9,60 @@ let mockLessons: Lesson[] = [];
 let mockChallenges: Challenge[] = [];
 
 export const api = {
-  async login(name: string, role: 'student' | 'instructor'): Promise<User> {
-    await mockDelay(300);
-    mockUser = { id: crypto.randomUUID(), name, role, token: `mock-token-${Date.now()}` };
-    return mockUser;
+  async register(email: string, password: string, name: string): Promise<User> {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Registration failed');
+    }
+    const tokenData = await res.json();
+    localStorage.setItem('qubitlab_token', tokenData.access_token);
+    return this.getCurrentUser() as Promise<User>;
+  },
+
+  async login(email: string, password: string): Promise<User> {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'Login failed');
+    }
+    const tokenData = await res.json();
+    localStorage.setItem('qubitlab_token', tokenData.access_token);
+    return this.getCurrentUser() as Promise<User>;
   },
 
   async getCurrentUser(): Promise<User | null> {
-    await mockDelay(50);
-    return mockUser;
+    const token = localStorage.getItem('qubitlab_token');
+    if (!token) return null;
+
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          localStorage.removeItem('qubitlab_token');
+        }
+        return null;
+      }
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   async logout(): Promise<void> {
-    await mockDelay(50);
-    mockUser = null;
+    localStorage.removeItem('qubitlab_token');
   },
 
   async simulate(circuit: Circuit, shots = 1024): Promise<SimulateResponse> {
