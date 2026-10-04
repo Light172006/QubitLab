@@ -1,4 +1,5 @@
 ﻿import { useDroppable } from '@dnd-kit/core';
+import { Lock } from 'lucide-react';
 import { Gate, Circuit } from '../../types';
 import { GateTile } from './GateTile';
 import { gateFill } from './gateStyles';
@@ -108,8 +109,11 @@ function DroppableCell({
         <div className="w-full h-0.5 bg-gray-200" />
       </div>
       {!canDrop && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-label font-medium text-muted">Measurement is terminal</span>
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          title="Measurement is terminal"
+        >
+          <Lock className="w-3.5 h-3.5 text-muted" aria-label="Locked" />
         </div>
       )}
       {children}

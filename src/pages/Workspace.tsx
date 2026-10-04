@@ -1,20 +1,48 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+} from '@dnd-kit/core';
 import { useCircuitStore, useUIStore, useLessonStore, useChallengeStore, useTutorStore, useCodeStore } from '../store';
 import { api } from '../api/client';
-import { CircuitCanvas } from '../components/canvas/CircuitCanvas';
+import {
+  CircuitCanvas,
+  isCellFree,
+  moveGateInCircuit,
+  removeGateFromCircuit,
+} from '../components/canvas/CircuitCanvas';
 import { CanvasToolbar } from '../components/canvas/CanvasToolbar';
+import { GatePalette } from '../components/canvas/GatePalette';
 import { StatePanel } from '../components/state/StatePanel';
 import { TutorDrawer } from '../components/tutor/TutorDrawer';
 import { CodeEditor } from '../components/canvas/CodeEditor';
 import { LessonPlayer } from '../components/lessons/LessonPlayer';
 import { TopBar } from '../components/common/TopBar';
+import { Gate, GateType } from '../types';
 import { ChevronLeft, ChevronRight, Code, LayoutGrid } from 'lucide-react';
+
+const COLUMNS = 10;
+
+function sortableKeyboardCoordinates(event: KeyboardEvent) {
+  const { key } = event;
+  if (key === 'ArrowRight') return { x: 50, y: 0 };
+  if (key === 'ArrowLeft') return { x: -50, y: 0 };
+  if (key === 'ArrowDown') return { x: 0, y: 50 };
+  if (key === 'ArrowUp') return { x: 0, y: -50 };
+  return undefined;
+}
 
 export default function Workspace() {
   const navigate = useNavigate();
   const { circuit, setCircuit, undo, redo, reset, historyIndex, history } = useCircuitStore();
-  const { level, bitOrder, leftRailOpen, rightRailOpen, setLeftRailOpen, setRightRailOpen } = useUIStore();
+  const { level, bitOrder, leftRailOpen, setLeftRailOpen } = useUIStore();
   const { currentLesson, currentStepIndex, setCurrentLesson, setCurrentStep, markStepComplete } = useLessonStore();
   const { currentChallenge, setCurrentChallenge } = useChallengeStore();
   const {
@@ -32,6 +60,13 @@ export default function Workspace() {
   const [codeTimeout, setCodeTimeout] = useState<ReturnType<typeof setTimeout>>();
   const isFirstRun = useRef(true);
   const runIdRef = useRef(0);
+  const [placingTwoQubit, setPlacingTwoQubit] = useState<{ gate: Gate; control: number } | null>(null);
+  const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   useEffect(() => {
     api.getLessons().then((lessons) => {
@@ -125,6 +160,69 @@ export default function Workspace() {
       activeTab === tab ? 'bg-navy text-white' : 'text-muted hover:text-text hover:bg-gray-100'
     }`;
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const gateType = event.active.data.current?.gateType as GateType | undefined;
+    setDraggedGateType(gateType ?? null);
+  };
+
+  const commit = (gates: Gate[]) => {
+    setCircuit({ ...circuit, gates: [...gates].sort((a, b) => a.column - b.column) });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggedGateType(null);
+    if (!over) return;
+
+    const [, qubitStr, columnStr] = over.id.toString().split('-');
+    const qubit = parseInt(qubitStr);
+    const column = parseInt(columnStr);
+
+    // A placed gate was dragged: move it instead of creating a new one.
+    const movedGateId = active.data.current?.gateId as string | undefined;
+    if (movedGateId) {
+      const next = moveGateInCircuit(circuit, movedGateId, qubit, column);
+      if (next !== circuit) setCircuit(next);
+      return;
+    }
+
+    // A palette gate was dragged: place it.
+    const gateType = active.data.current?.gateType as GateType | undefined;
+    if (!gateType) return;
+    if (!isCellFree(circuit, qubit, column)) return;
+
+    const newGate: Gate = {
+      id: `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      type: gateType,
+      targets: [qubit],
+      controls: [],
+      column,
+    };
+
+    if (gateType === 'CNOT' || gateType === 'CZ') {
+      // Two-qubit gates need a target wire picked next.
+      setPlacingTwoQubit({ gate: newGate, control: qubit });
+    } else {
+      commit([...circuit.gates, newGate]);
+    }
+  };
+
+  const handleCellClick = (qubit: number, column: number) => {
+    if (!placingTwoQubit) return;
+    if (qubit === placingTwoQubit.control) {
+      alert('A qubit cannot be both control and target. Pick a different wire.');
+      return;
+    }
+    if (!isCellFree(circuit, qubit, column)) return;
+    commit([...circuit.gates, { ...placingTwoQubit.gate, targets: [qubit], controls: [placingTwoQubit.control] }]);
+    setPlacingTwoQubit(null);
+  };
+
+  const handleRemoveGate = (gateId: string) => {
+    const next = removeGateFromCircuit(circuit, gateId);
+    if (next !== circuit) setCircuit(next);
+  };
+
   return (
     <div className="h-screen bg-surface flex flex-col overflow-hidden">
       <TopBar
@@ -184,8 +282,8 @@ export default function Workspace() {
           )}
         </aside>
 
-        {/* Center - Canvas/Code */}
-        <main className="flex-1 flex flex-col min-w-0">
+        {/* Center: toolbar, then the canvas/code row and the Live State row */}
+        <main aria-label="Circuit and live state" className="flex-1 min-w-0 min-h-0 flex flex-col">
           <CanvasToolbar
             leftContent={
               <div className="flex items-center gap-2" role="group" aria-label="Editor mode">
@@ -213,49 +311,78 @@ export default function Workspace() {
             onReset={() => { if (confirm('Reset circuit?')) reset(); }}
           />
 
-          <div className="flex-1 overflow-auto p-4">
-            {activeTab === 'canvas' ? (
-              <CircuitCanvas
-                circuit={circuit}
-                onChange={handleCircuitChange}
-                numQubits={circuit.num_qubits}
-              />
-            ) : (
-              <CodeEditor
-                code={code}
-                onChange={handleCodeChange}
-                syncStatus={syncStatus}
-                errors={errors}
-                onSync={syncCodeToCanvas}
-              />
-            )}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div
+              className={`flex-1 min-h-0 grid grid-rows-[auto_1fr] overflow-hidden ${
+                activeTab === 'canvas' ? 'grid-cols-[120px_1fr]' : 'grid-cols-1fr'
+              }`}
+            >
+              {/* Left: Compact Gate Palette - spans both rows (hidden in Code mode) */}
+              {activeTab === 'canvas' && (
+                <div className="row-span-2 flex flex-col bg-white border-r border-gray-200 overflow-hidden">
+                  <GatePalette onGateSelect={() => {}} />
+                </div>
+              )}
+
+              {/* Right column: Circuit (top) + Live State (bottom) */}
+              <div className="flex flex-col min-w-0 min-h-0 overflow-hidden">
+                {/* Circuit area (Canvas) / Editor area (Code) - row 1, natural height */}
+                <div
+                  className={`shrink-0 overflow-x-auto ${activeTab === 'canvas' ? 'p-4 pb-2' : 'p-4'}`}
+                  role="region"
+                  aria-label={activeTab === 'canvas' ? 'Circuit' : 'Code editor'}
+                >
+                  {activeTab === 'canvas' ? (
+                    <CircuitCanvas
+                      circuit={circuit}
+                      onChange={handleCircuitChange}
+                      numQubits={circuit.num_qubits}
+                      draggedGateType={draggedGateType}
+                      placingTwoQubit={placingTwoQubit}
+                      onCellClick={handleCellClick}
+                      onRemoveGate={handleRemoveGate}
+                    />
+                  ) : (
+                    <div className="h-[clamp(260px,40vh,440px)] min-h-[260px] max-h-[440px] w-full relative flex">
+                      <CodeEditor
+                        code={code}
+                        onChange={handleCodeChange}
+                        syncStatus={syncStatus}
+                        errors={errors}
+                        onSync={syncCodeToCanvas}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Live State - fills ALL remaining height (row 2) */}
+                <section aria-label="Live state" className="flex flex-col h-full min-h-0 bg-surface">
+                  <header className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 shrink-0">
+                    <h2 className="text-body font-semibold text-text">Live State</h2>
+                    <p className="text-label text-muted text-center shrink-0">
+                      q1q0 — qubit 0 is the right-most bit (Qiskit order)
+                    </p>
+                  </header>
+                  <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
+                    <StatePanel circuit={circuit} facts={factsPacket} bitOrder={bitOrder} />
+                  </div>
+                </section>
+              </div>
+            </div>
+          </DndContext>
         </main>
 
-        {/* Right Rail - State Panel */}
-        <aside className={`${rightRailOpen ? 'w-80' : 'w-16'} flex-shrink-0 bg-white border-l border-gray-200 flex flex-col transition-all duration-200`}>
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            {rightRailOpen && <h3 className="font-medium text-text">State</h3>}
-            <button
-              onClick={() => setRightRailOpen(!rightRailOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100 text-muted hover:text-text transition-colors"
-              aria-label={rightRailOpen ? 'Collapse state panel' : 'Expand state panel'}
-              title={rightRailOpen ? 'Collapse state panel' : 'Expand state panel'}
-            >
-              {rightRailOpen ? <ChevronRight className="w-5 h-5" aria-hidden="true" /> : <ChevronLeft className="w-5 h-5" aria-hidden="true" />}
-            </button>
-          </div>
-          <div className="flex-1 overflow-auto">
-            {rightRailOpen && <StatePanel circuit={circuit} facts={factsPacket} bitOrder={bitOrder} />}
-          </div>
-        </aside>
-
-        {/* Non-modal tutor drawer: overlays the state panel, canvas stays interactive */}
+        {/* Non-modal tutor drawer: overlays the canvas, which stays interactive */}
         <TutorDrawer
           onAsk={async (question) => {
             if (!factsPacket) return;
             // Shares the run token with the simulation effect: a newer circuit or a
-            // newer question supersedes this stream.
+            // newest question supersedes this stream.
             const runId = ++runIdRef.current;
             const isStale = () => runIdRef.current !== runId;
             pushQuestion(question);
