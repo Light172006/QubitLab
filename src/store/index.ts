@@ -168,7 +168,8 @@ export const useUIStore = create<UIState>()(
       bitOrder: 'qiskit',
       leftRailOpen: true,
       rightRailOpen: true,
-      tutorDrawerOpen: false,
+      // The tutor dock is a permanent part of the workspace: it starts open.
+      tutorDrawerOpen: true,
       setLevel: (level) => set({ level }),
       setBackend: (backend) => set({ backend }),
       setShots: (shots) => set({ shots }),

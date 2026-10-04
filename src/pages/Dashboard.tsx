@@ -178,7 +178,7 @@ export default function Dashboard() {
                   <tbody>
                     {overview.students.map((student: any) => (
                       <tr key={student.user_id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 font-medium text-text">{student.name}</td>
+                        <td className="py-3 font-medium text-text">Student {student.user_id}</td>
                         <td className="py-3 text-center text-muted">{student.lessons_completed}/{student.total_lessons}</td>
                         <td className="py-3 text-center text-muted">{student.challenges_solved}/{student.total_challenges}</td>
                         <td className="py-3 text-center text-muted">{student.last_active}</td>

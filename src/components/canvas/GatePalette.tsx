@@ -29,6 +29,7 @@ function GateTileComponent({ gate, onGateSelect, hoveredGate, setHoveredGate }: 
       {...attributes}
       {...listeners}
       role="listitem"
+      aria-roledescription="draggable"
       tabIndex={0}
       aria-label={`${style.description}. Drag onto a wire, or press Enter to select.`}
       title={style.description}
@@ -45,7 +46,7 @@ function GateTileComponent({ gate, onGateSelect, hoveredGate, setHoveredGate }: 
       }}
     >
       <div
-        className="flex items-center justify-center w-full h-12 rounded-lg font-mono font-bold text-lg"
+        className="flex items-center justify-center w-full h-11 rounded-lg font-mono font-bold text-base"
         style={{ backgroundColor: style.fill, color: style.label }}
       >
         {style.symbol}
@@ -66,8 +67,8 @@ export function GatePalette({ onGateSelect }: GatePaletteProps) {
   const [hoveredGate, setHoveredGate] = useState<GateType | null>(null);
 
   return (
-    <div className="w-44 flex-shrink-0 bg-white border-r border-gray-200 p-4 space-y-3" role="list" aria-label="Gate palette">
-      <div className="text-label font-semibold uppercase tracking-wide text-muted">Gates</div>
+    <div className="w-full flex flex-col gap-2 p-2" role="list" aria-label="Gate palette">
+      <p className="text-[12px] font-semibold text-muted uppercase tracking-wide px-1">Gates</p>
       {GATE_ORDER.map((gate) => (
         <GateTileComponent
           key={gate}

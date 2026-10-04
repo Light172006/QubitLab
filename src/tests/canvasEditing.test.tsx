@@ -6,6 +6,7 @@ import {
   removeGateFromCircuit,
   moveGateInCircuit,
 } from '../components/canvas/CircuitCanvas';
+import { GatePalette } from '../components/canvas/GatePalette';
 import type { Circuit } from '../types';
 
 const empty: Circuit = { version: 1, num_qubits: 2, gates: [] };
@@ -47,7 +48,10 @@ describe('B2 nothing may be placed after Measure on that wire', () => {
 
   it('renders the lock hint only on the cells after the measurement', () => {
     renderCanvas(withMeasureOnQ0);
-    const locked = screen.getAllByText('Measurement is terminal');
+    // Every locked cell carries the "locked" suffix in its aria-label.
+    const locked = screen
+      .getAllByRole('gridcell')
+      .filter((cell) => cell.getAttribute('aria-label')?.includes('locked'));
     // columns 2..9 on q0 only
     console.log('B2 locked cells:', locked.length);
     expect(locked).toHaveLength(8);
@@ -131,7 +135,13 @@ describe('B4 moving a placed gate', () => {
   });
 
   it('registers placed gates and palette gates as draggables in one context', () => {
-    renderCanvas(withH);
+    // The palette is a sibling of the canvas in the Workspace, so render both.
+    render(
+      <>
+        <GatePalette onGateSelect={vi.fn()} />
+        <CircuitCanvas circuit={withH} onChange={vi.fn()} numQubits={2} />
+      </>
+    );
     const placed = screen.getByRole('button', { name: /H gate on qubit 0/ });
     const palette = screen.getByRole('listitem', { name: /Pauli-X/ });
     console.log(

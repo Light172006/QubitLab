@@ -137,6 +137,14 @@ export interface StudentProgress {
   last_active: string;
   status: 'on_track' | 'stuck';
   stuck_at?: string;
+  /** Student view: completed lesson ids, in order. */
+  completedLessons?: string[];
+  /** Student view: completed challenge ids, in order. */
+  completedChallenges?: string[];
+  /** Student view: completed step count per lesson id. */
+  lessonSteps?: Record<string, number>;
+  /** Student view: attempts per challenge id. */
+  challengeAttempts?: Record<string, number>;
 }
 
 export interface InstructorOverview {
