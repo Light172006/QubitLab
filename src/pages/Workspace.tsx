@@ -20,7 +20,7 @@ import {
 } from '../components/canvas/CircuitCanvas';
 import { CanvasToolbar } from '../components/canvas/CanvasToolbar';
 import { GatePalette } from '../components/canvas/GatePalette';
-import { StatePanel } from '../components/state/StatePanel';
+import { StateDashboard } from '../components/state/StateDashboard';
 import { TutorDrawer } from '../components/tutor/TutorDrawer';
 import { CodeEditor } from '../components/canvas/CodeEditor';
 import { LessonPlayer } from '../components/lessons/LessonPlayer';
@@ -361,17 +361,12 @@ export default function Workspace() {
                 </div>
 
                 {/* Live State - fills ALL remaining height (row 2) */}
-                <section aria-label="Live state" className="flex flex-col h-full min-h-0 bg-surface">
-                  <header className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 shrink-0">
-                    <h2 className="text-body font-semibold text-text">Live State</h2>
-                    <p className="text-label text-muted text-center shrink-0">
-                      q1q0 — qubit 0 is the right-most bit (Qiskit order)
-                    </p>
-                  </header>
-                  <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
-                    <StatePanel circuit={circuit} facts={factsPacket} bitOrder={bitOrder} />
-                  </div>
-                </section>
+                <StateDashboard
+                  circuit={circuit}
+                  facts={factsPacket}
+                  bitOrder={bitOrder}
+                  level={level}
+                />
               </div>
             </div>
           </DndContext>
