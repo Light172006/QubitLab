@@ -113,6 +113,10 @@ export function TutorDrawer({ onAsk }: TutorDrawerProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isOpen) {
+        // A docked tutor (>=1024px) is permanent: Esc must not close it.
+        // Only the bottom-sheet mode below 1024px may be dismissed.
+        const docked = window.matchMedia?.('(min-width: 1024px)').matches ?? false;
+        if (docked) return;
         event.preventDefault();
         setTutorDrawerOpen(false);
         return;
@@ -150,10 +154,12 @@ export function TutorDrawer({ onAsk }: TutorDrawerProps) {
       aria-label="Tutor"
       tabIndex={-1}
       className={[
-        'absolute z-40 flex flex-col bg-white shadow-2xl border-gray-200 outline-none',
-        // Bottom sheet on small screens, fixed 420px column from 1024px up.
-        'inset-x-0 bottom-0 h-[70vh] border-t',
-        'lg:inset-x-auto lg:inset-y-0 lg:right-0 lg:h-auto lg:w-tutor lg:border-t-0 lg:border-l',
+        // Below 1024px: full-width bottom sheet overlaying the canvas.
+        'absolute z-40 inset-x-0 bottom-0 h-[70vh] border-t',
+        // 1024px and up: a permanent dock in flow (the CSS variable
+        // --tutor-drawer-width sizes it: 380px at >=1280, 320px below).
+        'lg:static lg:z-auto lg:h-auto lg:border-t-0 lg:border-l lg:w-tutor',
+        'flex flex-col bg-white shadow-2xl border-gray-200 outline-none',
         'transition-transform duration-drawer ease-out motion-reduce:transition-none',
         isOpen ? 'translate-x-0 translate-y-0' : 'translate-y-full lg:translate-y-0 lg:translate-x-full',
       ].join(' ')}

@@ -21,10 +21,10 @@ export default {
         mono: ['JetBrains Mono', 'monospace'],
       },
       maxWidth: {
-        tutor: '420px',
+        tutor: 'var(--tutor-drawer-width)',
       },
       width: {
-        tutor: '420px',
+        tutor: 'var(--tutor-drawer-width)',
       },
       transitionDuration: {
         drawer: '250ms',

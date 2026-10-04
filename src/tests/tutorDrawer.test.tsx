@@ -83,11 +83,35 @@ describe('TutorDrawer', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it('closes on Escape', () => {
+  it('closes on Escape only in bottom-sheet mode', () => {
     renderTutor();
     act(() => useUIStore.getState().setTutorDrawerOpen(true));
+    // jsdom has no matchMedia: the drawer treats that as undocked, so
+    // Escape closes the sheet.
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(useUIStore.getState().tutorDrawerOpen).toBe(false);
+  });
+
+  it('ignores Escape while the tutor is docked', () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('min-width: 1024px'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as typeof window.matchMedia;
+    try {
+      renderTutor();
+      act(() => useUIStore.getState().setTutorDrawerOpen(true));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(useUIStore.getState().tutorDrawerOpen).toBe(true);
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it('toggles on T but not while typing in a field', () => {
