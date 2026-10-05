@@ -152,6 +152,28 @@ describe('B5 undo/redo/reset must resimulate', () => {
   });
 });
 
+describe('D1 panels update within 100ms of a committed edit', () => {
+  it('simulates immediately after a committed circuit change', async () => {
+    renderWorkspace();
+    await flush();
+    simulate.mockClear();
+
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    // 50ms is well under the old 400ms debounce: the panels
+    // must already reflect the edit within the 100ms budget.
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(simulate.mock.calls.length).toBe(1);
+    expect(useTutorStore.getState().factsPacket).not.toBeNull();
+  });
+});
+
 describe('B6 a code edit must resimulate', () => {
   async function typeCode(code: string) {
     fireEvent.click(screen.getByRole('button', { name: /code/i }));

@@ -119,7 +119,10 @@ export default function Workspace() {
     // next checkpoint instead of interleaving tokens from a stale circuit.
     const runId = ++runIdRef.current;
     const isStale = () => runIdRef.current !== runId;
-    const timeout = setTimeout(async () => {
+    // Committed edits are discrete events: simulate immediately so the
+    // Live State panels update within the 100ms budget. Code edits are
+    // already debounced in handleCodeChange.
+    void (async () => {
       const result = await api.simulate(circuit, useUIStore.getState().shots);
       if (isStale()) return;
       // The diff needs the previous distribution, which only the
@@ -144,8 +147,7 @@ export default function Workspace() {
       setStreaming(false);
       // Files this explanation into the tutor scrollback, open drawer or not.
       commitExplanation();
-    }, 400);
-    return () => clearTimeout(timeout);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circuit]);
 

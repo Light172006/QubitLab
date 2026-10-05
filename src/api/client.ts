@@ -118,7 +118,6 @@ export const api = {
   },
 
   async simulate(circuit: Circuit, shots = 1024): Promise<SimulateResponse> {
-    await mockDelay(200);
     const { simulateCircuit } = await import('../mock/simulator');
     return simulateCircuit(circuit, shots);
   },
