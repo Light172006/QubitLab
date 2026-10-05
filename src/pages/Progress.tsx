@@ -125,45 +125,53 @@ export default function Progress() {
               {lessons.map((lesson, idx) => {
                 const isDone = completedLessons.includes(lesson.id);
                 const isCurrent = !isDone && (!completedLessons.includes(lessons[idx - 1]?.id) || idx === 0);
+                const isLocked = !isDone && idx > 0 && !completedLessons.includes(lessons[idx - 1]?.id);
                 const stepProgress = progress?.lessonSteps?.[lesson.id] || 0;
-                return (
-                  <Link
-                    key={lesson.id}
-                    to="/workspace"
-                    className={`relative block p-5 rounded-xl border transition-all ${
-                      isDone
-                        ? 'bg-green-50 border-green-200'
-                        : isCurrent
-                        ? 'bg-blue-50 border-brand'
-                        : 'bg-white border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <span className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold ${
-                        isDone ? 'bg-green text-white' : isCurrent ? 'bg-brand text-white' : 'bg-gray-200 text-muted'
-                      }`}>
-                        {lesson.order}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3">
-                          <h3 className="font-medium text-text truncate">{lesson.title}</h3>
-                          {isDone && <CheckCircle className="w-5 h-5 text-green flex-shrink-0" />}
-                          {isCurrent && !isDone && <span className="px-2 py-0.5 text-label font-medium bg-brand-tint text-brand-text rounded-full">In Progress</span>}
-                        </div>
-                        <div className="mt-1 flex items-center gap-3">
-                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-brand rounded-full transition-all"
-                              style={{ width: `${(stepProgress / (lesson.steps?.length || 1)) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-muted w-20 text-right">
-                            {stepProgress} / {lesson.steps?.length || 0}
-                          </span>
-                        </div>
+                const body = (
+                  <div className="flex items-center gap-4">
+                    <span className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold ${
+                      isDone ? 'bg-green text-white' : isCurrent ? 'bg-brand text-white' : 'bg-gray-200 text-muted'
+                    }`}>
+                      {lesson.order}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <h3 className="font-medium text-text truncate">{lesson.title}</h3>
+                        {isDone && <CheckCircle className="w-5 h-5 text-green flex-shrink-0" />}
+                        {isCurrent && !isDone && <span className="px-2 py-1 text-label font-medium bg-brand-tint text-brand-text rounded-full">In Progress</span>}
+                        {isLocked && <Lock className="w-4 h-4 text-muted flex-shrink-0" aria-label="Locked" />}
                       </div>
-                      <ChevronRight className="w-5 h-5 text-muted flex-shrink-0" />
+                      <div className="mt-1 flex items-center gap-3">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-brand rounded-full transition-all"
+                            style={{ width: `${(stepProgress / (lesson.steps?.length || 1)) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-muted w-20 text-right">
+                          {stepProgress} / {lesson.steps?.length || 0}
+                        </span>
+                      </div>
                     </div>
+                    <ChevronRight className="w-5 h-5 text-muted flex-shrink-0" />
+                  </div>
+                );
+                const shell = `relative block p-5 rounded-xl border transition-all ${
+                  isDone
+                    ? 'bg-green-50 border-green-200'
+                    : isCurrent
+                    ? 'bg-blue-50 border-brand'
+                    : 'bg-white border-gray-200 hover:border-gray-300'
+                }`;
+                // ?lesson= matters: every row used to link to a bare /workspace,
+                // which always opened lesson 1.
+                return isLocked ? (
+                  <div key={lesson.id} className={shell} aria-disabled="true">
+                    {body}
+                  </div>
+                ) : (
+                  <Link key={lesson.id} to={`/workspace?lesson=${lesson.id}`} className={shell}>
+                    {body}
                   </Link>
                 );
               })}
@@ -210,7 +218,7 @@ export default function Progress() {
             </h2>
             <div className="bg-white p-5 rounded-xl border border-gray-100">
               {lessons.find(l => !completedLessons.includes(l.id)) ? (
-                <Link to="/workspace" className="block">
+                <Link to={`/workspace?lesson=${lessons.find((l) => !completedLessons.includes(l.id))?.id}`} className="block">
                   <p className="text-sm text-muted mb-1">Continue Learning</p>
                   <p className="font-medium text-text">Lesson {lessons.find(l => !completedLessons.includes(l.id))?.order}: {lessons.find(l => !completedLessons.includes(l.id))?.title}</p>
                 </Link>

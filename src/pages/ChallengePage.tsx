@@ -54,7 +54,6 @@ export default function ChallengePage() {
     pushQuestion,
     clearExplanation,
   } = useTutorStore();
-  const [simulateTimeout, setSimulateTimeout] = useState<ReturnType<typeof setTimeout>>();
   const [result, setResult] = useState<ChallengeResult | null>(null);
   const [placingTwoQubit, setPlacingTwoQubit] = useTwoQubitPlacement();
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
@@ -91,12 +90,14 @@ export default function ChallengePage() {
     setCircuit(newCircuit);
   };
 
-  // Simulation debounce: every committed change refreshes the Live
-  // State and the tutor. Superseded runs stop at their next checkpoint.
+  // Every committed change refreshes the Live State immediately, and any
+  // superseded tutor stream stops at its next checkpoint. The run token is what
+  // cancels a stream, so there is no need to debounce: the state panels used to
+  // trail the circuit by the 400 ms debounce.
   useEffect(() => {
     const runId = ++runIdRef.current;
     const isStale = () => runIdRef.current !== runId;
-    const timeout = setTimeout(async () => {
+    void (async () => {
       const simResult = await api.simulate(circuit, useUIStore.getState().shots);
       if (isStale()) return;
       const facts = simResult.facts;
@@ -112,8 +113,7 @@ export default function ChallengePage() {
       if (isStale()) return;
       setStreaming(false);
       commitExplanation();
-    }, 400);
-    return () => clearTimeout(timeout);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circuit]);
 

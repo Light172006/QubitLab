@@ -70,7 +70,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold text-text">Welcome, {user?.name} 👋</h1>
           {continueLesson && (
             <Link
-              to="/workspace"
+              to={`/workspace?lesson=${continueLesson.id}`}
               className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-navy text-white rounded-lg hover:bg-navy/90 transition-colors"
             >
               <Play className="w-4 h-4" />
@@ -92,24 +92,16 @@ export default function Home() {
               {lessons.map((lesson, idx) => {
                 const isDone = progress?.completedLessons?.includes(lesson.id);
                 const isCurrent = !isDone && (!progress?.completedLessons?.includes(lessons[idx - 1]?.id) || idx === 0);
-                return (
-                  <Link
-                    key={lesson.id}
-                    to="/workspace"
-                    className={`relative p-5 rounded-xl border transition-all ${
-                      isDone
-                        ? 'bg-green-50 border-green-200'
-                        : isCurrent
-                        ? 'bg-blue-50 border-brand'
-                        : 'bg-white border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
+                // Locked lessons stay visible but are not a link.
+                const isLocked = !isDone && idx > 0 && !progress?.completedLessons?.includes(lessons[idx - 1]?.id);
+                const body = (
+                  <>
                     {isDone && (
                       <div className="absolute -top-2 -right-2 flex items-center justify-center w-6 h-6 rounded-full bg-green text-white">
                         <CheckCircle className="w-4 h-4" aria-hidden="true" />
                       </div>
                     )}
-                    {!isDone && idx > 0 && !progress?.completedLessons?.includes(lessons[idx - 1]?.id) && (
+                    {isLocked && (
                       <div className="absolute -top-2 -right-2 flex items-center justify-center w-6 h-6 rounded-full bg-muted text-white">
                         <Lock className="w-3.5 h-3.5" />
                       </div>
@@ -127,7 +119,26 @@ export default function Home() {
                       <span>{lesson.steps?.length || 0} steps</span>
                       {isDone && <span className="text-green font-medium">Completed</span>}
                       {isCurrent && !isDone && <span className="text-brand-text font-medium">In progress</span>}
+                      {isLocked && <span className="font-medium">Finish lesson {lessons[idx - 1]?.order} first</span>}
                     </div>
+                  </>
+                );
+                const shell = `relative p-5 rounded-xl border transition-all ${
+                  isDone
+                    ? 'bg-green-50 border-green-200'
+                    : isCurrent
+                    ? 'bg-blue-50 border-brand'
+                    : 'bg-white border-gray-200 hover:border-gray-300'
+                }`;
+                // ?lesson= matters: every card used to link to a bare
+                // /workspace, which always opened lesson 1.
+                return isLocked ? (
+                  <div key={lesson.id} className={shell} aria-disabled="true">
+                    {body}
+                  </div>
+                ) : (
+                  <Link key={lesson.id} to={`/workspace?lesson=${lesson.id}`} className={shell}>
+                    {body}
                   </Link>
                 );
               })}
@@ -162,7 +173,7 @@ export default function Home() {
           </section>
 
           <section>
-            <Link to="/workspace" className="block p-6 rounded-xl bg-white border border-gray-200 hover:border-brand hover:shadow-md transition-all">
+            <Link to="/workspace?sandbox=1" className="block p-6 rounded-xl bg-white border border-gray-200 hover:border-brand hover:shadow-md transition-all">
               <div className="flex items-center gap-3">
                 <div className="p-3 rounded-lg bg-navy/10 text-navy">
                   <Play className="w-6 h-6" />
