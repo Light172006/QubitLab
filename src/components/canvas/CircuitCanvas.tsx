@@ -44,6 +44,21 @@ export function isCellFree(circuit: Circuit, wire: number, column: number, ignor
   return !isLockedByMeasure(circuit, wire, column) && !isOccupied(circuit, wire, column, ignoreId);
 }
 
+/**
+ * A two-qubit gate fits in a column when BOTH wires are free
+ * there. The control wire must be checked too: the user picks
+ * it first, but it occupies the same column as the target.
+ */
+export function canPlaceTwoQubit(
+  circuit: Circuit,
+  control: number,
+  target: number,
+  column: number
+): boolean {
+  if (control === target) return false;
+  return isCellFree(circuit, control, column) && isCellFree(circuit, target, column);
+}
+
 export function removeGateFromCircuit(circuit: Circuit, gateId: string): Circuit {
   if (!circuit.gates.some((gate) => gate.id === gateId)) return circuit;
   return { ...circuit, gates: circuit.gates.filter(g => g.id !== gateId) };

@@ -5,6 +5,7 @@ import {
   isLockedByMeasure,
   removeGateFromCircuit,
   moveGateInCircuit,
+  canPlaceTwoQubit,
 } from '../components/canvas/CircuitCanvas';
 import { GatePalette } from '../components/canvas/GatePalette';
 import type { Circuit } from '../types';
@@ -82,6 +83,31 @@ describe('B3 deleting a placed gate', () => {
     console.log('B3 onChange calls:', onChange.mock.calls.length);
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0]).toEqual(empty);
+  });
+});
+
+describe('C3 two-qubit placement checks both wires', () => {
+  it('accepts a column free on both wires', () => {
+    expect(canPlaceTwoQubit(withH, 0, 1, 1)).toBe(true);
+  });
+
+  it('rejects a column occupied on the control wire', () => {
+    // H sits on q0 column 0: a CNOT controlled by q0
+    // cannot also occupy column 0.
+    expect(canPlaceTwoQubit(withH, 0, 1, 0)).toBe(false);
+  });
+
+  it('rejects a column occupied on the target wire', () => {
+    const withXOnQ1: Circuit = {
+      version: 1,
+      num_qubits: 2,
+      gates: [{ id: 'g1', type: 'X', targets: [1], controls: [], column: 0 }],
+    };
+    expect(canPlaceTwoQubit(withXOnQ1, 0, 1, 0)).toBe(false);
+  });
+
+  it('rejects the same wire as control and target', () => {
+    expect(canPlaceTwoQubit(withH, 0, 0, 3)).toBe(false);
   });
 });
 

@@ -15,6 +15,7 @@ import { api } from '../api/client';
 import {
   CircuitCanvas,
   isCellFree,
+  canPlaceTwoQubit,
   moveGateInCircuit,
   removeGateFromCircuit,
 } from '../components/canvas/CircuitCanvas';
@@ -252,8 +253,10 @@ export default function Workspace() {
       alert('A qubit cannot be both control and target. Pick a different wire.');
       return;
     }
-    if (!isCellFree(circuit, qubit, column)) return;
-    commit([...circuit.gates, { ...placingTwoQubit.gate, targets: [qubit], controls: [placingTwoQubit.control] }]);
+    // Both wires of a two-qubit gate must be free in the column.
+    const control = placingTwoQubit.control;
+    if (!canPlaceTwoQubit(circuit, control, qubit, column)) return;
+    commit([...circuit.gates, { ...placingTwoQubit.gate, targets: [qubit], controls: [control] }]);
     setPlacingTwoQubit(null);
   };
 
