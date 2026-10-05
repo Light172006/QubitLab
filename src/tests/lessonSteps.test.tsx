@@ -61,7 +61,7 @@ beforeEach(() => {
   useLessonStore.setState({
     currentLesson: null,
     currentStepIndex: 0,
-    completedSteps: new Set(),
+    completedSteps: [],
   });
 });
 
@@ -110,7 +110,7 @@ describe('G1 manual completion is a two-hint fallback', () => {
     useLessonStore.setState({
       currentLesson: superposition,
       currentStepIndex: 0,
-      completedSteps: new Set(),
+      completedSteps: [],
     });
     render(
       <LessonPlayer
@@ -164,7 +164,7 @@ describe('LessonPlayer auto-detection', () => {
     useLessonStore.setState({
       currentLesson: superposition,
       currentStepIndex: 0,
-      completedSteps: new Set(),
+      completedSteps: [],
     });
 
     render(
@@ -204,7 +204,7 @@ describe('LessonPlayer auto-detection', () => {
       currentLesson: superposition,
       // Two steps behind us, both completed in the store.
       currentStepIndex: 2,
-      completedSteps: new Set(['L1S1', 'L1S2']),
+      completedSteps: ['L1S1', 'L1S2'],
     });
 
     render(
