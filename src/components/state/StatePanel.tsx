@@ -277,6 +277,15 @@ export function StatePanel({
           </div>
         </Card>
       )}
+      {!showBloch && bloch.length > 0 && (
+        <button
+          onClick={() => setShowBloch(true)}
+          className="flex items-center gap-2 text-label font-medium text-brand-text hover:underline mt-4"
+        >
+          <Eye className="w-4 h-4" aria-hidden="true" />
+          Show Bloch spheres ({bloch.length})
+        </button>
+      )}
     </div>
   );
 }
