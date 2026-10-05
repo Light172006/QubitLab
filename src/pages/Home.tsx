@@ -134,7 +134,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section>
+          <section id="challenges">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-text flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-accent-text-orange" aria-hidden="true" />

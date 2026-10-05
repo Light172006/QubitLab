@@ -1,4 +1,8 @@
+import { useNavigate } from 'react-router-dom';
 import { TutorButton } from '../tutor/TutorButton';
+import { useAuthStore } from '../../store';
+import { api } from '../../api/client';
+import { LogOut } from 'lucide-react';
 
 interface TopBarProps {
   level: 'beginner' | 'intermediate';
@@ -8,8 +12,29 @@ interface TopBarProps {
   onSandboxClick: () => void;
 }
 
+/** Scroll the Challenges list into view once Home has mounted it. */
+function revealChallenges() {
+  const scroll = () => document.getElementById('challenges')?.scrollIntoView({ behavior: 'smooth' });
+  scroll();
+  // Coming from another page the section may not exist yet this tick.
+  window.setTimeout(scroll, 60);
+}
+
 /** Navbar. Backend and Shots live in the canvas toolbar, not here. */
 export function TopBar({ level, setLevel, bitOrder, setBitOrder, onSandboxClick }: TopBarProps) {
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const logoutFromStore = useAuthStore((state) => state.logout);
+
+  const handleLogout = async () => {
+    await api.logout();
+    logoutFromStore();
+    navigate('/login', { replace: true });
+  };
+
+  const navItem =
+    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors';
+
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
@@ -19,19 +44,32 @@ export function TopBar({ level, setLevel, bitOrder, setBitOrder, onSandboxClick 
             <span className="font-bold text-navy">QubitLab</span>
           </span>
           <nav className="hidden md:flex items-center gap-1" aria-label="Main">
-            <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-brand-text bg-brand-tint">
+            <button
+              className={`${navItem} text-brand-text bg-brand-tint`}
+              aria-current="page"
+              onClick={() => navigate('/learn')}
+            >
               Learn
             </button>
-            <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-gray-100">
+            <button
+              className={`${navItem} text-muted hover:text-text hover:bg-gray-100`}
+              onClick={() => {
+                navigate('/learn');
+                revealChallenges();
+              }}
+            >
               Challenges
             </button>
             <button
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-gray-100"
+              className={`${navItem} text-muted hover:text-text hover:bg-gray-100`}
               onClick={onSandboxClick}
             >
               Sandbox
             </button>
-            <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-gray-100">
+            <button
+              className={`${navItem} text-muted hover:text-text hover:bg-gray-100`}
+              onClick={() => navigate('/progress')}
+            >
               Progress
             </button>
           </nav>
@@ -98,6 +136,20 @@ export function TopBar({ level, setLevel, bitOrder, setBitOrder, onSandboxClick 
           </div>
 
           <TutorButton />
+
+          {/* Signing out was only reachable from Learn, Progress and the
+              dashboard, so the workspace had no way out. */}
+          {user && (
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-gray-100 transition-colors"
+              aria-label="Log out"
+              title={`Log out ${user.name}`}
+            >
+              <LogOut className="w-4 h-4" aria-hidden="true" />
+              <span className="hidden lg:inline">{user.name}</span>
+            </button>
+          )}
         </div>
       </div>
     </header>
