@@ -21,6 +21,7 @@ import {
 } from '../components/canvas/CircuitCanvas';
 import { CanvasToolbar } from '../components/canvas/CanvasToolbar';
 import { GatePalette } from '../components/canvas/GatePalette';
+import { useTwoQubitPlacement } from '../components/canvas/useTwoQubitPlacement';
 import { StateDashboard } from '../components/state/StateDashboard';
 import { TutorDrawer } from '../components/tutor/TutorDrawer';
 import { CodeEditor } from '../components/canvas/CodeEditor';
@@ -90,7 +91,8 @@ export default function Workspace() {
   const runIdRef = useRef(0);
   /** Last simulated distribution, for the changed-state diff. */
   const prevProbabilitiesRef = useRef<Record<string, number>>({});
-  const [placingTwoQubit, setPlacingTwoQubit] = useState<{ gate: Gate; control: number } | null>(null);
+  // CNOT/CZ waiting for its target wire; Escape cancels.
+  const [placingTwoQubit, setPlacingTwoQubit] = useTwoQubitPlacement();
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
 
   const sensors = useSensors(
