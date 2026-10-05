@@ -30,6 +30,33 @@ import { ChevronLeft, ChevronRight, Code, LayoutGrid } from 'lucide-react';
 
 const COLUMNS = 10;
 
+/**
+ * Basis states whose probability moved by more than the panel's
+ * 0.01 highlight threshold, in the current distribution's order.
+ * Drives the changed-state pulse and the dimmed zero rows; the
+ * simulator cannot know the previous state, so the workspace
+ * derives the diff from its own last snapshot.
+ */
+export function computeStateDiff(
+  prev: Record<string, number>,
+  next: Record<string, number>
+): string[] {
+  const changed = new Set<string>();
+  for (const [state, prob] of Object.entries(next)) {
+    if (Math.abs(prob - (prev[state] || 0)) > 0.01) changed.add(state);
+  }
+  // States that vanished from the distribution come last,
+  // in the previous distribution's order.
+  const disappeared: string[] = [];
+  for (const state of Object.keys(prev)) {
+    if (!(state in next) && prev[state] > 0.01) {
+      changed.add(state);
+      disappeared.push(state);
+    }
+  }
+  return [...Object.keys(next).filter((state) => changed.has(state)), ...disappeared];
+}
+
 function sortableKeyboardCoordinates(event: KeyboardEvent) {
   const { key } = event;
   if (key === 'ArrowRight') return { x: 50, y: 0 };
@@ -60,6 +87,8 @@ export default function Workspace() {
   const [codeTimeout, setCodeTimeout] = useState<ReturnType<typeof setTimeout>>();
   const isFirstRun = useRef(true);
   const runIdRef = useRef(0);
+  /** Last simulated distribution, for the changed-state diff. */
+  const prevProbabilitiesRef = useRef<Record<string, number>>({});
   const [placingTwoQubit, setPlacingTwoQubit] = useState<{ gate: Gate; control: number } | null>(null);
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
 
@@ -93,7 +122,15 @@ export default function Workspace() {
     const timeout = setTimeout(async () => {
       const result = await api.simulate(circuit, useUIStore.getState().shots);
       if (isStale()) return;
-      const facts = result.facts;
+      // The diff needs the previous distribution, which only the
+      // workspace holds: attach it plus the changed states.
+      const prevProbabilities = prevProbabilitiesRef.current;
+      const facts = {
+        ...result.facts,
+        prev_probabilities: prevProbabilities,
+        changed_states: computeStateDiff(prevProbabilities, result.probabilities),
+      };
+      prevProbabilitiesRef.current = result.probabilities;
       setFactsPacket(facts);
       clearExplanation();
       setStreaming(true);
