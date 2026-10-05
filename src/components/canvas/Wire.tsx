@@ -137,9 +137,13 @@ export function Wire({
   const renderCell = (column: number) => {
     const gate = gatesOnWire.find(g => g.column === column);
     const canDrop = !isLockedByMeasure(qubit, column);
-    // Every cell on a non-control wire is a valid target
-    // while a two-qubit gate awaits its target wire.
-    const isPlacingTarget = !!placingTwoQubit && placingTwoQubit.control !== qubit;
+    // Only the control's own column can take the target, so only those cells
+    // are advertised as valid targets.
+    const isPlacingTarget =
+      !!placingTwoQubit &&
+      placingTwoQubit.control !== qubit &&
+      column === placingTwoQubit.gate.column &&
+      canDrop;
     const handleClick = () => {
       if (placingTwoQubit) onCellClick(qubit, column);
     };
