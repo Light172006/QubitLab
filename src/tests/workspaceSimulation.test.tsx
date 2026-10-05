@@ -174,6 +174,50 @@ describe('D1 panels update within 100ms of a committed edit', () => {
   });
 });
 
+describe('C4 Ctrl+Z / Ctrl+Shift+Z undo and redo', () => {
+  it('undoes a committed change with Ctrl+Z', async () => {
+    renderWorkspace();
+    await flush();
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    await flush();
+    expect(useCircuitStore.getState().circuit).toEqual(withH);
+
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(useCircuitStore.getState().circuit).toEqual(empty);
+    expect(useCircuitStore.getState().historyIndex).toBe(0);
+  });
+
+  it('redoes with Ctrl+Shift+Z', async () => {
+    renderWorkspace();
+    await flush();
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    await flush();
+
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(useCircuitStore.getState().circuit).toEqual(withH);
+    expect(useCircuitStore.getState().historyIndex).toBe(1);
+  });
+
+  it('does not hijack Ctrl+Z inside the code editor', async () => {
+    renderWorkspace();
+    await flush();
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    await flush();
+
+    fireEvent.click(screen.getByRole('button', { name: /code/i }));
+    const editor = screen.getByLabelText('code');
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+    expect(useCircuitStore.getState().circuit).toEqual(withH);
+  });
+});
+
 describe('B6 a code edit must resimulate', () => {
   async function typeCode(code: string) {
     fireEvent.click(screen.getByRole('button', { name: /code/i }));

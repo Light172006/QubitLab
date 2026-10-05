@@ -157,6 +157,28 @@ export default function Workspace() {
   // Unmounting mid-stream would otherwise keep appending to a store nobody reads.
   useEffect(() => () => { runIdRef.current += 1; }, []);
 
+  // Undo/redo shortcuts: Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS).
+  // Text fields keep their own undo (the code editor, ask box).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key !== 'z' && event.key !== 'Z') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping =
+        tag === 'input' || tag === 'textarea' || tag === 'select' || !!target?.isContentEditable;
+      if (isTyping) return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        useCircuitStore.getState().redo();
+      } else {
+        useCircuitStore.getState().undo();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleCircuitChange = (newCircuit: typeof circuit) => {
     setCircuit(newCircuit);
   };
