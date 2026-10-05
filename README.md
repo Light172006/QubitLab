@@ -44,7 +44,7 @@ src/
 ├── api/client.ts       # Mock-backed async API surface
 ├── store/index.ts      # Zustand stores
 ├── design/tokens.js    # Shared design tokens (single source of truth)
-└── tests/              # 8 test files
+└── tests/              # 26 test files
 doc/                    # PRD, SRS, architecture, UI/UX specs (note: doc/, not docs/)
 ```
 
@@ -58,13 +58,13 @@ Be explicit:
 
 - `api.explain` / `api.ask` lazy-import `src/mock/tutor.ts` and stream from deterministic templates.
 - "Streaming" is simulated: 1500 ms initial delay, then 40–50 ms per three-word chunk.
-- The 20% fallback is `Math.random() < 0.2`; both branches emit identical text.
-- Q&A is substring keyword matching (including bare letters like `h`, `x`, `z`, `s`, `t`), not comprehension. Beginner mode is a regex rewrite swapping terms like "fidelity" → "overlap".
+- The fallback is deterministic (mock mode has no backend), not random.
+- Q&A is word-boundary quantum-term matching. Beginner mode is a regex rewrite swapping terms like "fidelity" → "overlap".
 - The design intent in `doc/03_System_Architecture.md` is a server-side LLM adapter with a 6 s timeout and deterministic fallback (SRS FR-AI-06, NFR-SEC-03).
 
 ## Test Suite
 
-8 files, 95 tests, all passing (as of `45bf1e2`):
+26 test files, **275 tests passing** (as of `06bc299` on `bugfix-audit`):
 
 | File | Coverage |
 |------|----------|
@@ -72,35 +72,75 @@ Be explicit:
 | `multiQubit.test.ts` | GHZ, non-adjacent controls, 4-qubit CNOT, 3-qubit CZ, degenerate gates, B12 facts |
 | `codeParser.test.ts` | Cirq-style parsing and error reporting |
 | `canvasEditing.test.tsx` | Gate delete, move, measure lock |
-| `workspaceSimulation.test.tsx` | B5 resimulate on undo/redo/reset, B6 code-edit resimulate, B7 error rendering |
-| `tutorStreamSupersede.test.tsx` | B11 stale-stream cancellation |
+| `workspaceSimulation.test.tsx` | Resimulate on undo/redo/reset, code-edit resimulate, error rendering |
+| `tutorStreamSupersede.test.tsx` | Stale-stream cancellation |
 | `tutorDrawer.test.tsx` | Drawer accessibility |
 | `contrast.test.ts` | Design-token contrast ratios |
+| `persistedState.test.ts` | Lesson/circuit rehydration safety |
+| `routing.test.tsx` | Role redirects, nav wiring |
+| `lessonRouting.test.tsx` | Lesson card links, sandbox flag |
+| `challenges.test.tsx` | Fidelity, scoring, hint ladder |
+| `paletteKeyboard.test.tsx` | Keyboard drag, button roles |
+| `formatting.test.tsx` | Bit-order relabelling, negative-zero snap |
+| `tutorAsk.test.tsx` | Off-topic redirect, Enter/Shift+Enter, empty/long input |
+| `twoQubitColumn.test.ts` | Cross-column CNOT rejection |
+| `lessonSteps.test.tsx` | Marginal probabilities, entanglement checks |
+| `shotHistogram.test.tsx` | Histogram counts sum, zero/non-zero handling |
+| `deepLinkLogin.test.tsx` | Auth deep links |
 
-## Known Limitations and Open Issues
+## Bugfix Audit (branch `bugfix-audit`)
 
-### Architectural Gaps
+All BLOCKER and MAJOR bugs from the full audit are fixed. Summary:
+
+| Bug | Area | Fixed |
+|-----|------|-------|
+| **B01** | Lesson state crash on refresh (`completedSteps` Set → array + persist merge) | ✅ |
+| **B02** | Build failure: `challenges.test.ts` was `.ts` with JSX | ✅ |
+| **B03** | Instructor blank screen on `/learn` (self-redirect loop) | ✅ |
+| **B04** | CNOT/CZ cross-column collision (target clicked in different column than control) | ✅ |
+| **B05/B10/B11** | Bit-order toggle didn't relabel amplitude table/histogram/header | ✅ |
+| **B06** | CH2 "Prepare \|+⟩" passed on Bell state (false positive) | ✅ |
+| **B07** | Challenge scoring/hints/feedback messages missing | ✅ |
+| **B08** | Lessons 2 & 3 unreachable (all cards linked to bare `/workspace`) | ✅ |
+| **B09** | Reset hardcodes `num_qubits: 2` | ✅ |
+| **B12** | Palette click/Enter no-op; keyboard drag broken | ✅ |
+| **B13** | Drop rejection silent (no feedback) | ✅ |
+| **B14** | Grid cells not focusable, no keyboard placement | ✅ (via dnd-kit KeyboardSensor) |
+| **B15** | Tutor "Offline" badge random (`Math.random() < 0.2`), text identical | ✅ |
+| **B16** | Off-topic detection never fired (bare-letter keywords) | ✅ |
+| **B17** | Ask box `<input>` → Shift+Enter newline impossible | ✅ (`<textarea>`) |
+| **B18** | Bloch reduced-motion ignored (stale closure) | ✅ |
+| **B19** | Bloch hide irreversible (no show button) | ✅ |
+| **B20** | "Completed Steps" list mismatched header count | ✅ |
+| **B21** | Hint ladder revealed all text at once | ✅ |
+| **B22** | Challenge sim debounced 400 ms (vs 100 ms budget) | ✅ |
+| **B25** | No logout on Workspace/Challenge pages | ✅ |
+| **B26** | `checkLessonStep` 1-bit targets vs 2-bit state keys | ✅ |
+| **B27** | `-0.00` / `-0.0000` in readouts | ✅ |
+| **B38** | Bloch WebGL leak (geometries/materials/context not released) | ✅ |
+| **B39** | Palette `role="listitem"` ignored `aria-label` | ✅ |
+
+### Remaining Minor/Deferred
+
+| Bug | Description | Status |
+|-----|-------------|--------|
+| **B8/B9** | Lesson step validation logic defects in `content.ts` (edge-case probability checks) | Deferred — not blocking core flow |
+| **B10** | Unknown users get hardcoded 1/3 progress in `dashboardData.ts` | Deferred — mock data |
+| **B13** | `setShots`/`setBackend` don't trigger resimulate | Deferred — Shots/Backend mock-only |
+| **B14/B15** | Challenge fidelity proxy (`1 - |p0-0.5| - |p1-0.5|`) not true statevector fidelity | Deferred — scoring approximation |
+| **B34** | `store.addGate` ID collision (`Date.now()` only) | Deferred — unused in app |
+| **B37** | `syncStatus === 'code-only'` never set | Deferred — dead code |
+
+## Architectural Gaps
 
 - **No backend.** `doc/03_System_Architecture.md` specifies FastAPI + simulators + SQLite; the browser does everything.
 - **No LLM.** Tutor is templates only.
 - **Auth is a mock login** with no real session or token validation.
 - **All progress data is hardcoded** in `src/mock/dashboardData.ts`.
 
-### Open Bugs (triaged, not yet fixed)
+## Verification
 
-| Bug | Description | Code Anchor |
-|-----|-------------|-------------|
-| **B8** | Lesson step validation defects | `src/mock/content.ts` |
-| **B9** | Lesson checklist failures: `probability` check only iterates target states, so unexpected non-zero states never fail the step | `src/mock/content.ts:173-190` |
-| **B10** | Any user not in `MOCK_STUDENTS` gets hardcoded 1/3 progress regardless of real activity | `src/mock/dashboardData.ts:14-28` |
-| **B12 (partial)** | Simulator side is fixed, but nothing supplies the true `CircuitAction`; "added H at t=0 while X sits at t=5" still reports X. Needs action channel threaded `CircuitCanvas` → `Workspace`/`ChallengePage` → `api.simulate` → `simulateCircuit`. Also `src/mock/tutor.ts:6-7` has a bad p0/p1 key lookup that reports 0% on 1-qubit-cleared states. | `src/mock/tutor.ts:6-7` |
-| **B13** | `setShots` and `setBackend` only write to the UI store, but the simulate effect keys on `[circuit]` alone, so neither triggers a resimulate | `src/components/canvas/CanvasToolbar.tsx:38-79` |
-| **B14/B15** | Fidelity scoring is a loose proxy (e.g. CH2: `1 - \|p0-0.5\| - \|p1-0.5\|`, CH3: `min(p00,p11)*2`), not a real fidelity against the target statevector | `src/mock/content.ts:216-232` |
-
-### Verification Gaps
-
-Placed-gate drag/drop and tutor drawer UI behavior were only verified at code level — no browser was available for runtime smoke testing.
-
----
-
-*Baseline commit: `45bf1e2` — `npx tsc --noEmit` clean, `npm test` 95/95, `npm run build` succeeds (pre-existing 500 kB chunk warning).*
+- `npm run build` ✓ (main bundle 324 kB gzip)
+- `npm test` ✓ (26 files, 275 tests pass)
+- `npm run preview` ✓ (no console errors)
+- Browser-verified: instructor redirect, lesson 2/3 open, sandbox hides lesson, keyboard drag, bit-order toggle, reduced-motion, Bloch hide/show
