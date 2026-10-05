@@ -14,18 +14,20 @@ import { useChallengeStore, useCircuitStore, useUIStore, useTutorStore } from '.
 import { api } from '../api/client';
 import {
   CircuitCanvas,
-  isCellFree,
   moveGateInCircuit,
   removeGateFromCircuit,
+  completeTwoQubitPlacement,
+  rejectReasonForCell,
 } from '../components/canvas/CircuitCanvas';
 import { CanvasToolbar } from '../components/canvas/CanvasToolbar';
 import { GatePalette } from '../components/canvas/GatePalette';
+import { useTwoQubitPlacement } from '../components/canvas/useTwoQubitPlacement';
 import { StateDashboard } from '../components/state/StateDashboard';
 import { TutorDrawer } from '../components/tutor/TutorDrawer';
 import { TopBar } from '../components/common/TopBar';
 import { ChallengePanel, type ChallengeResult } from '../components/lessons/ChallengePanel';
 import { Gate, GateType } from '../types';
-import { ChevronLeft, ChevronRight, ArrowLeft, Trophy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, Trophy, AlertTriangle } from 'lucide-react';
 
 function sortableKeyboardCoordinates(event: KeyboardEvent) {
   const { key } = event;
@@ -54,8 +56,15 @@ export default function ChallengePage() {
   } = useTutorStore();
   const [simulateTimeout, setSimulateTimeout] = useState<ReturnType<typeof setTimeout>>();
   const [result, setResult] = useState<ChallengeResult | null>(null);
-  const [placingTwoQubit, setPlacingTwoQubit] = useState<{ gate: Gate; control: number } | null>(null);
+  const [placingTwoQubit, setPlacingTwoQubit] = useTwoQubitPlacement();
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
+  /** Why the last canvas interaction was refused. Announced, then cleared. */
+  const [canvasNotice, setCanvasNotice] = useState<string | null>(null);
+
+  const reject = (reason: string) => {
+    setCanvasNotice(reason);
+    window.setTimeout(() => setCanvasNotice((current) => (current === reason ? null : current)), 6000);
+  };
   // Monotonic token identifying the newest simulation/question stream. Clearing the
   // debounce timer does not stop a stream that already started, so every write to
   // the tutor is gated on this token instead.
@@ -129,13 +138,23 @@ export default function ChallengePage() {
     const movedGateId = active.data.current?.gateId as string | undefined;
     if (movedGateId) {
       const next = moveGateInCircuit(circuit, movedGateId, qubit, column);
-      if (next !== circuit) setCircuit(next);
+      if (next === circuit) {
+        reject(rejectReasonForCell(circuit, qubit, column)
+          ?? `That cell already holds a gate. Move it somewhere free.`);
+        return;
+      }
+      setCircuit(next);
+      setCanvasNotice(null);
       return;
     }
 
     const gateType = active.data.current?.gateType as GateType | undefined;
     if (!gateType) return;
-    if (!isCellFree(circuit, qubit, column)) return;
+    const blocked = rejectReasonForCell(circuit, qubit, column);
+    if (blocked) {
+      reject(blocked);
+      return;
+    }
 
     const newGate: Gate = {
       id: `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
@@ -150,17 +169,19 @@ export default function ChallengePage() {
     } else {
       commit([...circuit.gates, newGate]);
     }
+    setCanvasNotice(null);
   };
 
   const handleCellClick = (qubit: number, column: number) => {
     if (!placingTwoQubit) return;
-    if (qubit === placingTwoQubit.control) {
-      alert('A qubit cannot be both control and target. Pick a different wire.');
+    const result = completeTwoQubitPlacement(circuit, placingTwoQubit, qubit, column);
+    if (!result.ok) {
+      reject(result.reason);
       return;
     }
-    if (!isCellFree(circuit, qubit, column)) return;
-    commit([...circuit.gates, { ...placingTwoQubit.gate, targets: [qubit], controls: [placingTwoQubit.control] }]);
+    setCircuit(result.circuit);
     setPlacingTwoQubit(null);
+    setCanvasNotice(null);
   };
 
   const handleRemoveGate = (gateId: string) => {
@@ -280,6 +301,15 @@ export default function ChallengePage() {
                   role="region"
                   aria-label="Circuit"
                 >
+                  {canvasNotice && (
+                    <p
+                      role="status"
+                      className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 text-label rounded-lg bg-orange-tint border border-orange/30 text-accent-text-orange"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                      {canvasNotice}
+                    </p>
+                  )}
                   <CircuitCanvas
                     circuit={circuit}
                     onChange={handleCircuitChange}

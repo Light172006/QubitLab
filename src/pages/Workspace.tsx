@@ -14,10 +14,10 @@ import { useCircuitStore, useUIStore, useLessonStore, useChallengeStore, useTuto
 import { api } from '../api/client';
 import {
   CircuitCanvas,
-  isCellFree,
-  canPlaceTwoQubit,
   moveGateInCircuit,
   removeGateFromCircuit,
+  completeTwoQubitPlacement,
+  rejectReasonForCell,
 } from '../components/canvas/CircuitCanvas';
 import { CanvasToolbar } from '../components/canvas/CanvasToolbar';
 import { GatePalette } from '../components/canvas/GatePalette';
@@ -28,7 +28,7 @@ import { CodeEditor } from '../components/canvas/CodeEditor';
 import { LessonPlayer } from '../components/lessons/LessonPlayer';
 import { TopBar } from '../components/common/TopBar';
 import { Gate, GateType } from '../types';
-import { ChevronLeft, ChevronRight, Code, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Code, LayoutGrid, AlertTriangle } from 'lucide-react';
 
 const COLUMNS = 10;
 
@@ -94,6 +94,13 @@ export default function Workspace() {
   // CNOT/CZ waiting for its target wire; Escape cancels.
   const [placingTwoQubit, setPlacingTwoQubit] = useTwoQubitPlacement();
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
+  /** Why the last canvas interaction was refused. Announced, then cleared. */
+  const [canvasNotice, setCanvasNotice] = useState<string | null>(null);
+
+  const reject = (reason: string) => {
+    setCanvasNotice(reason);
+    window.setTimeout(() => setCanvasNotice((current) => (current === reason ? null : current)), 6000);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -246,14 +253,24 @@ export default function Workspace() {
     const movedGateId = active.data.current?.gateId as string | undefined;
     if (movedGateId) {
       const next = moveGateInCircuit(circuit, movedGateId, qubit, column);
-      if (next !== circuit) setCircuit(next);
+      if (next === circuit) {
+        reject(rejectReasonForCell(circuit, qubit, column)
+          ?? `${over.id.toString().replace('cell-', 'q')} already holds a gate. Move it somewhere free.`);
+        return;
+      }
+      setCircuit(next);
+      setCanvasNotice(null);
       return;
     }
 
     // A palette gate was dragged: place it.
     const gateType = active.data.current?.gateType as GateType | undefined;
     if (!gateType) return;
-    if (!isCellFree(circuit, qubit, column)) return;
+    const blocked = rejectReasonForCell(circuit, qubit, column);
+    if (blocked) {
+      reject(blocked);
+      return;
+    }
 
     const newGate: Gate = {
       id: `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
@@ -269,19 +286,19 @@ export default function Workspace() {
     } else {
       commit([...circuit.gates, newGate]);
     }
+    setCanvasNotice(null);
   };
 
   const handleCellClick = (qubit: number, column: number) => {
     if (!placingTwoQubit) return;
-    if (qubit === placingTwoQubit.control) {
-      alert('A qubit cannot be both control and target. Pick a different wire.');
+    const result = completeTwoQubitPlacement(circuit, placingTwoQubit, qubit, column);
+    if (!result.ok) {
+      reject(result.reason);
       return;
     }
-    // Both wires of a two-qubit gate must be free in the column.
-    const control = placingTwoQubit.control;
-    if (!canPlaceTwoQubit(circuit, control, qubit, column)) return;
-    commit([...circuit.gates, { ...placingTwoQubit.gate, targets: [qubit], controls: [control] }]);
+    setCircuit(result.circuit);
     setPlacingTwoQubit(null);
+    setCanvasNotice(null);
   };
 
   const handleRemoveGate = (gateId: string) => {
@@ -404,6 +421,15 @@ export default function Workspace() {
                   role="region"
                   aria-label={activeTab === 'canvas' ? 'Circuit' : 'Code editor'}
                 >
+                  {canvasNotice && activeTab === 'canvas' && (
+                    <p
+                      role="status"
+                      className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 text-label rounded-lg bg-orange-tint border border-orange/30 text-accent-text-orange"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                      {canvasNotice}
+                    </p>
+                  )}
                   {activeTab === 'canvas' ? (
                     <CircuitCanvas
                       circuit={circuit}
