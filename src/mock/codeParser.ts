@@ -38,8 +38,15 @@ export function parseCode(code: string): ParseReturn {
 
     if (!line || line.startsWith('#') || line.startsWith('//')) continue;
 
-    // Skip import statements
+    // Only the canonical Qiskit import is supported; every
+    // other import is an error, never a silent skip.
     if (line.startsWith('import ') || line.startsWith('from ')) {
+      if (line === 'from qiskit import QuantumCircuit') continue;
+      errors.push({
+        line: lineNum,
+        code: line,
+        message: 'Unsupported import (only "from qiskit import QuantumCircuit" is supported)',
+      });
       continue;
     }
 

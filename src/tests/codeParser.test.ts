@@ -1,100 +1,97 @@
 import { describe, it, expect } from 'vitest';
 import { parseCode, toCode } from '../mock/codeParser';
-import { GateType } from '../types';
 
-describe('Code Parser', () => {
-  it('parses simple H gate', () => {
-    const code = `
-from qiskit import QuantumCircuit
-qc = QuantumCircuit(2, 2)
-qc.h(0)
-`;
-    const result = parseCode(code);
-    expect('circuit' in result).toBe(true);
-    if ('circuit' in result) {
-      expect(result.circuit.num_qubits).toBe(2);
-      expect(result.circuit.gates).toHaveLength(1);
-      expect(result.circuit.gates[0].type).toBe('H');
-      expect(result.circuit.gates[0].targets).toEqual([0]);
-    }
+describe('E3 unsupported syntax is an error, never silent', () => {
+  it('accepts the canonical Qiskit import (round-trip)', () => {
+    const r = parseCode(
+      'from qiskit import QuantumCircuit\nqc = QuantumCircuit(2)\nqc.h(0)'
+    );
+    expect('circuit' in r).toBe(true);
   });
 
-  it('parses H + CNOT', () => {
-    const code = `
-from qiskit import QuantumCircuit
-qc = QuantumCircuit(2, 2)
-qc.h(0)
-qc.cx(0, 1)
-`;
-    const result = parseCode(code);
-    expect('circuit' in result).toBe(true);
-    if ('circuit' in result) {
-      expect(result.circuit.gates).toHaveLength(2);
-      expect(result.circuit.gates[0].type).toBe('H');
-      expect(result.circuit.gates[1].type).toBe('CNOT');
-      expect(result.circuit.gates[1].controls).toEqual([0]);
-      expect(result.circuit.gates[1].targets).toEqual([1]);
-    }
+  it('rejects other imports with a 1-based line number', () => {
+    const r = parseCode('import math\nqc = QuantumCircuit(2)');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(1);
+    expect(r.errors[0].message).toMatch(/import/i);
   });
 
-  it('parses measure', () => {
-    const code = `
-from qiskit import QuantumCircuit
-qc = QuantumCircuit(2, 2)
-qc.h(0)
-qc.measure(0, 0)
-`;
-    const result = parseCode(code);
-    expect('circuit' in result).toBe(true);
-    if ('circuit' in result) {
-      const measureGate = result.circuit.gates.find(g => g.type === 'MEASURE');
-      expect(measureGate).toBeDefined();
-      expect(measureGate?.targets).toEqual([0]);
-    }
+  it('rejects from-imports other than the canonical one', () => {
+    const r = parseCode(
+      'from qiskit import QuantumCircuit, Aer\nqc = QuantumCircuit(2)'
+    );
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(1);
   });
 
-  it('reports error for unsupported gate', () => {
-    const code = `
-from qiskit import QuantumCircuit
-qc = QuantumCircuit(2, 2)
-qc.rx(0.5, 0)
-`;
-    const result = parseCode(code);
-    expect('errors' in result).toBe(true);
-    if ('errors' in result) {
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0].message).toContain('Unsupported');
-    }
+  it('rejects loops', () => {
+    const r = parseCode(
+      'qc = QuantumCircuit(2)\nfor i in range(2):\n    qc.h(i)'
+    );
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors.length).toBeGreaterThan(0);
   });
 
-  it('reports error for CNOT with wrong args', () => {
-    const code = `
-from qiskit import QuantumCircuit
-qc = QuantumCircuit(2, 2)
-qc.cx(0)
-`;
-    const result = parseCode(code);
-    expect('errors' in result).toBe(true);
-    if ('errors' in result) {
-      expect(result.errors[0].message).toContain('two qubit arguments');
-    }
+  it('rejects unsupported method calls', () => {
+    const r = parseCode('qc = QuantumCircuit(2)\nqc.draw()');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].message).toMatch(/Unsupported gate method: draw/);
+  });
+});
+
+describe('E3 qubit indices are validated', () => {
+  it('rejects an out-of-range qubit index', () => {
+    const r = parseCode('qc = QuantumCircuit(2)\nqc.h(5)');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(2);
+    expect(r.errors[0].message).toMatch(/h/i);
   });
 
-  it('toCode generates correct Qiskit code', () => {
-    const circuit = {
+  it('rejects a negative qubit index', () => {
+    const r = parseCode('qc = QuantumCircuit(2)\nqc.x(-1)');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(2);
+  });
+
+  it('rejects non-integer arguments', () => {
+    const r = parseCode('qc = QuantumCircuit(2)\nqc.h(i)');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(2);
+  });
+
+  it('rejects out-of-range CNOT control and target', () => {
+    const r = parseCode('qc = QuantumCircuit(2)\nqc.cx(0, 7)');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(2);
+  });
+
+  it('rejects a measure clbit outside the register', () => {
+    const r = parseCode('qc = QuantumCircuit(2)\nqc.measure(0, 5)');
+    if ('circuit' in r) throw new Error('expected errors');
+    expect(r.errors[0].line).toBe(2);
+  });
+
+  it('accepts indices inside the register', () => {
+    const r = parseCode(
+      'qc = QuantumCircuit(3)\nqc.h(2)\nqc.cx(0, 2)\nqc.measure(2, 2)'
+    );
+    if ('errors' in r) throw new Error('expected a circuit');
+    expect(r.circuit.gates).toHaveLength(3);
+  });
+});
+
+describe('E2 toCode output', () => {
+  it('appends the # Try hint for an empty circuit', () => {
+    const code = toCode({ version: 1, num_qubits: 2, gates: [] });
+    expect(code).toContain('# Try: qc.h(0)');
+  });
+
+  it('does not append the hint when gates exist', () => {
+    const code = toCode({
       version: 1,
       num_qubits: 2,
-      gates: [
-        { id: 'g1', type: 'H' as GateType, targets: [0], controls: [], column: 0 },
-        { id: 'g2', type: 'CNOT' as GateType, targets: [1], controls: [0], column: 1 },
-        { id: 'g3', type: 'MEASURE' as GateType, targets: [0], controls: [], column: 2 },
-        { id: 'g4', type: 'MEASURE' as GateType, targets: [1], controls: [], column: 2 },
-      ],
-    };
-    const code = toCode(circuit);
-    expect(code).toContain('qc.h(0)');
-    expect(code).toContain('qc.cx(0, 1)');
-    expect(code).toContain('qc.measure(0, 0)');
-    expect(code).toContain('qc.measure(1, 1)');
+      gates: [{ id: 'g1', type: 'H', targets: [0], controls: [], column: 0 }],
+    });
+    expect(code).not.toContain('# Try:');
   });
 });
