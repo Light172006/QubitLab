@@ -215,7 +215,7 @@ describe('B4 moving a placed gate', () => {
       </>
     );
     const placed = screen.getByRole('button', { name: /H gate on qubit 0/ });
-    const palette = screen.getByRole('listitem', { name: /Pauli-X/ });
+    const palette = screen.getByRole('button', { name: /Pauli-X/ });
     console.log(
       'B4 aria-roledescription placed/palette:',
       placed.getAttribute('aria-roledescription'),
