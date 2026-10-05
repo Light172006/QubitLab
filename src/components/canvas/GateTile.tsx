@@ -53,6 +53,14 @@ export function GateTile({ gate, onRemove, isPlacingTarget, disabled }: GateTile
       title={disabled ? DISABLED_GATE_REASON : `Drag to move, or press Delete to remove`}
       onMouseEnter={() => !disabled && setShowDelete(true)}
       onMouseLeave={() => setShowDelete(false)}
+      onKeyDown={(e) => {
+        // Keyboard removal, matching the tooltip promise.
+        if (!disabled && (e.key === 'Delete' || e.key === 'Backspace')) {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove(gate.id);
+        }
+      }}
     >
       <div
         className="flex items-center justify-center w-full h-10 rounded-lg font-mono font-bold text-sm"

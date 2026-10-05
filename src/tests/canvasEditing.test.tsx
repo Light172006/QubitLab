@@ -133,6 +133,30 @@ describe('C2 candidate target cells highlight during placement', () => {
   });
 });
 
+describe('C5 Delete key removes a focused gate', () => {
+  it('removes the gate with Delete', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.keyDown(tile, { key: 'Delete' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0]).toEqual(empty);
+  });
+
+  it('removes the gate with Backspace', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.keyDown(tile, { key: 'Backspace' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores other keys', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.keyDown(tile, { key: 'a' });
+    expect(onChange).toHaveBeenCalledTimes(0);
+  });
+});
+
 describe('B4 moving a placed gate', () => {
   it('moves a single-qubit gate to a new wire and column', () => {
     const moved = moveGateInCircuit(withH, 'g1', 1, 4);
