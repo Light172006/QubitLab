@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Lesson, LessonStep, FactsPacket } from '../../types';
-import { CheckCircle, ChevronRight, HelpCircle, CircleCheck } from 'lucide-react';
+import { CheckCircle, ChevronRight, HelpCircle, CircleCheck, Lightbulb } from 'lucide-react';
 import { useLessonStore } from '../../store';
 
 interface LessonPlayerProps {
@@ -77,6 +77,15 @@ export function stepCheckPassed(
   return false;
 }
 
+/**
+ * Lesson hints are generic: the step's own instruction
+ * and tutor_context already carry the specific guidance.
+ */
+const LESSON_HINTS = [
+  'Watch the Live State panel — it updates the moment you place a gate.',
+  'The step completes automatically once the circuit matches the instruction above.',
+];
+
 export function LessonPlayer({
   lesson,
   currentStepIndex,
@@ -93,6 +102,13 @@ export function LessonPlayer({
   const { completedSteps: completedIds } = useLessonStore();
   const doneCount = completedIds.size;
   const currentSatisfied = step ? stepCheckPassed(step, facts) : false;
+  // Manual completion is a fallback, offered only after two hints.
+  const [hintsUsed, setHintsUsed] = useState(0);
+
+  // Hints reset per step.
+  useEffect(() => {
+    setHintsUsed(0);
+  }, [step?.id]);
 
   // Auto-detect: the moment the circuit satisfies the current step,
   // complete it (the store auto-advances to the next step).
@@ -143,13 +159,22 @@ export function LessonPlayer({
                 Build the circuit to complete this step
               </span>
             )}
-            <button
-              className="ml-auto px-3 py-1.5 text-sm bg-brand text-white rounded-lg hover:bg-brand/90 transition-colors"
-              onClick={() => onStepComplete(step.id)}
-            >
-              Mark Complete
-            </button>
+            {/* Manual complete: fallback only after two hints. */}
+            {hintsUsed >= LESSON_HINTS.length && (
+              <button
+                className="ml-auto px-3 py-1.5 text-sm bg-brand text-white rounded-lg hover:bg-brand/90 transition-colors"
+                onClick={() => onStepComplete(step.id)}
+              >
+                Mark Complete
+              </button>
+            )}
           </div>
+          {hintsUsed > 0 && (
+            <p className="mt-2 text-sm text-muted">
+              <Lightbulb className="w-4 h-4 inline mr-1" aria-hidden="true" />
+              {LESSON_HINTS[hintsUsed - 1]}
+            </p>
+          )}
         </div>
       )}
 
@@ -189,10 +214,18 @@ export function LessonPlayer({
         </details>
       )}
 
-      {/* Hint */}
-      <button className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-muted hover:bg-gray-50 transition-colors">
+      {/* Hint: reveals one at a time, up to two. */}
+      <button
+        className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-muted hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        onClick={() => setHintsUsed((h) => Math.min(h + 1, LESSON_HINTS.length))}
+        disabled={hintsUsed >= LESSON_HINTS.length}
+      >
         <HelpCircle className="w-4 h-4 inline mr-1" aria-hidden="true" />
-        Get a hint
+        {hintsUsed === 0
+          ? 'Get a hint'
+          : hintsUsed >= LESSON_HINTS.length
+            ? 'No more hints'
+            : `Hint ${hintsUsed + 1}`}
       </button>
     </div>
   );
