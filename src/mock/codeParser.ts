@@ -217,6 +217,10 @@ export function toCode(circuit: Circuit): string {
 
   const sortedGates = [...circuit.gates].sort((a, b) => a.column - b.column);
 
+  if (sortedGates.length === 0) {
+    lines.push('# Try: qc.h(0)');
+  }
+
   for (const gate of sortedGates) {
     const method = GATE_METHODS[gate.type];
     if (gate.type === 'MEASURE') {
