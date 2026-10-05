@@ -111,6 +111,28 @@ describe('C3 two-qubit placement checks both wires', () => {
   });
 });
 
+describe('C2 candidate target cells highlight during placement', () => {
+  it('highlights cells on every wire except the control', () => {
+    const placing = {
+      gate: { id: 'p1', type: 'CNOT' as const, targets: [0], controls: [], column: 1 },
+      control: 0,
+    };
+    render(
+      <CircuitCanvas circuit={empty} onChange={vi.fn()} numQubits={2} placingTwoQubit={placing} />
+    );
+    const controlCell = screen.getByRole('gridcell', { name: /^Qubit 0, column 1/ });
+    const targetCell = screen.getByRole('gridcell', { name: /^Qubit 1, column 1/ });
+    expect(targetCell.className).toContain('bg-brand-tint');
+    expect(controlCell.className).not.toContain('bg-brand-tint');
+  });
+
+  it('highlights nothing when no placement is pending', () => {
+    renderCanvas(empty);
+    const cell = screen.getByRole('gridcell', { name: /^Qubit 1, column 1/ });
+    expect(cell.className).not.toContain('bg-brand-tint');
+  });
+});
+
 describe('B4 moving a placed gate', () => {
   it('moves a single-qubit gate to a new wire and column', () => {
     const moved = moveGateInCircuit(withH, 'g1', 1, 4);
