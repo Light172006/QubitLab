@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store';
 import { useEffect } from 'react';
 import { api } from './api/client';
@@ -11,12 +11,15 @@ import Dashboard from './pages/Dashboard';
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: ('student' | 'instructor')[] }) {
   const { user, setUser } = useAuthStore();
+  const location = useLocation();
 
   useEffect(() => {
     api.getCurrentUser().then(setUser).catch(() => setUser(null));
   }, [setUser]);
 
-  if (!user) return <Navigate to="/login" replace />;
+  // Remember where the user was headed so login can
+  // send them back there instead of the default page.
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/learn" replace />;
   return <>{children}</>;
 }
