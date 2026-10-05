@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { checkChallenge, getChallenges } from '../mock/content';
-import { ChallengePanel } from '../components/lessons/ChallengePanel';
+import { checkChallenge, getChallenges, checkLessonStep } from '../mock/content';
+import { ChallengePanel, type ChallengePanelProps } from '../components/lessons/ChallengePanel';
 import { Circuit, Gate, GateType } from '../types';
 
 const gate = (
@@ -56,6 +56,60 @@ describe('G3 failure messages name the states', () => {
     const r = checkChallenge('CH1', circ([gate('H', [0], [], 0)]), 0);
     expect(r.passed).toBe(false);
     expect(r.message).toMatch(/P\(1\) is 50%; target is 100%/);
+  });
+
+  it('does not let the Bell state satisfy the |+⟩ challenge', () => {
+    // The old 1 - |p0-0.5| - |p1-0.5| metric scored P(00)=P(11)=0.5 as a pass.
+    const bell = circ([gate('H', [0], [], 0), gate('CNOT', [1], [0], 1)]);
+    const r = checkChallenge('CH2', bell, 0);
+    expect(r.passed).toBe(false);
+    expect(r.fidelity).toBeCloseTo(0.25, 6);
+  });
+
+  it('rejects a wider register that spreads |+⟩ across another qubit', () => {
+    // |+> on q0 with q1 also in superposition is not the target state.
+    const both = circ([gate('H', [0], [], 0), gate('H', [1], [], 1)]);
+    expect(checkChallenge('CH2', both, 0).passed).toBe(false);
+  });
+
+  it('passes |1⟩, |+⟩ and Bell with real statevector fidelity', () => {
+    expect(checkChallenge('CH1', circ([gate('X', [0], [], 0)]), 0).fidelity).toBeCloseTo(1, 6);
+    expect(checkChallenge('CH2', circ([gate('H', [0], [], 0)]), 0).fidelity).toBeCloseTo(1, 6);
+    expect(
+      checkChallenge('CH3', circ([gate('H', [0], [], 0), gate('CNOT', [1], [0], 1)]), 0).fidelity
+    ).toBeCloseTo(1, 6);
+  });
+
+  it('ignores global phase', () => {
+    // Z|1> = -|1>: same state up to phase, so the challenge still passes.
+    expect(checkChallenge('CH1', circ([gate('X', [0], [], 0), gate('Z', [0], [], 1)]), 0).passed).toBe(true);
+  });
+
+  it('does not penalise a terminal Measure as an extra gate', () => {
+    const withMeasure = circ([gate('X', [0], [], 0), gate('MEASURE', [0], [], 1)]);
+    expect(checkChallenge('CH1', withMeasure, 0).score).toBe(100);
+  });
+
+  it('refuses the Bell target on a one-qubit register instead of crashing', () => {
+    const r = checkChallenge('CH3', circ([gate('H', [0], [], 0)], 1), 0);
+    expect(r.passed).toBe(false);
+    expect(r.message).toMatch(/needs 2 qubits/);
+  });
+});
+
+describe('G1/G2 lesson steps use wire marginals, not raw state keys', () => {
+  it('completes a single-wire step on a two-qubit register', () => {
+    const r = checkLessonStep('L1', 'L1S1', circ([gate('H', [0], [], 0)]));
+    expect(r.passed).toBe(true);
+  });
+
+  it('completes the interference step where the target is {0:0, 1:1}', () => {
+    const hzh = circ([gate('H', [0], [], 0), gate('Z', [0], [], 1), gate('H', [0], [], 2)]);
+    expect(checkLessonStep('L3', 'L3S1', hzh).passed).toBe(true);
+  });
+
+  it('still fails when the circuit does not match', () => {
+    expect(checkLessonStep('L1', 'L1S4', circ([gate('H', [0], [], 0)])).passed).toBe(false);
   });
 });
 

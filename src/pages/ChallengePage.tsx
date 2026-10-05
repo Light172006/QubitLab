@@ -23,7 +23,7 @@ import { GatePalette } from '../components/canvas/GatePalette';
 import { StateDashboard } from '../components/state/StateDashboard';
 import { TutorDrawer } from '../components/tutor/TutorDrawer';
 import { TopBar } from '../components/common/TopBar';
-import { ChallengePanel } from '../components/lessons/ChallengePanel';
+import { ChallengePanel, type ChallengeResult } from '../components/lessons/ChallengePanel';
 import { Gate, GateType } from '../types';
 import { ChevronLeft, ChevronRight, ArrowLeft, Trophy } from 'lucide-react';
 
@@ -53,7 +53,7 @@ export default function ChallengePage() {
     clearExplanation,
   } = useTutorStore();
   const [simulateTimeout, setSimulateTimeout] = useState<ReturnType<typeof setTimeout>>();
-  const [result, setResult] = useState<{ passed: boolean; fidelity: number; message: string } | null>(null);
+  const [result, setResult] = useState<ChallengeResult | null>(null);
   const [placingTwoQubit, setPlacingTwoQubit] = useState<{ gate: Gate; control: number } | null>(null);
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
   // Monotonic token identifying the newest simulation/question stream. Clearing the
@@ -171,7 +171,7 @@ export default function ChallengePage() {
   const handleCheck = async () => {
     if (!currentChallenge) return;
     incrementAttempts();
-    const checkResult = await api.checkChallenge(currentChallenge.id, circuit);
+    const checkResult = await api.checkChallenge(currentChallenge.id, circuit, hintsUsed.length);
     setResult(checkResult);
   };
 

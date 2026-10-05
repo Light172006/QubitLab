@@ -170,10 +170,10 @@ export const api = {
     return mockChallenges;
   },
 
-  async checkChallenge(challengeId: string, circuit: Circuit): Promise<{ passed: boolean; fidelity: number; message: string }> {
+  async checkChallenge(challengeId: string, circuit: Circuit, hintsUsed = 0): Promise<{ passed: boolean; fidelity: number; message: string; score: number }> {
     await mockDelay(150);
     const { checkChallenge } = await import('../mock/content');
-    return checkChallenge(challengeId, circuit);
+    return checkChallenge(challengeId, circuit, hintsUsed);
   },
 
   async getHint(challengeId: string, hintLevel: number): Promise<string> {

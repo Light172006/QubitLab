@@ -1,11 +1,19 @@
 import { Challenge } from '../../types';
 import { Trophy, Target, Lightbulb, AlertCircle, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
 
-interface ChallengePanelProps {
+export interface ChallengeResult {
+  passed: boolean;
+  fidelity: number;
+  message: string;
+  /** max(10, 100 - 10 per hint - 5 per extra gate). */
+  score: number;
+}
+
+export interface ChallengePanelProps {
   challenge: Challenge;
   attempts: number;
   hintsUsed: number[];
-  result: { passed: boolean; fidelity: number; message: string } | null;
+  result: ChallengeResult | null;
   onHint: (level: number) => void;
   onCheck: () => void;
 }
@@ -19,7 +27,10 @@ export function ChallengePanel({
   onCheck,
 }: ChallengePanelProps) {
   const maxHints = challenge.max_hints;
-  const availableHints = Array.from({ length: maxHints }, (_, i) => i + 1).filter(h => !hintsUsed.includes(h));
+  // One level at a time: only the next unused hint is unlocked, so the ladder
+  // cannot be skipped and locked hints are not readable (or announced) early.
+  const nextHint = Array.from({ length: maxHints }, (_, i) => i + 1).find((h) => !hintsUsed.includes(h));
+  const availableHints = nextHint === undefined ? [] : [nextHint];
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -49,13 +60,16 @@ export function ChallengePanel({
           const hintLevel = idx + 1;
           const used = hintsUsed.includes(hintLevel);
           const available = availableHints.includes(hintLevel);
+          // Text stays hidden until the level is unlocked, and out of the
+          // accessible name too, so a screen reader is not given the answer.
+          const revealed = used || available;
           return (
             <button
               key={hintLevel}
               onClick={() => available && onHint(hintLevel)}
               disabled={!available}
-              aria-label={`Hint ${hintLevel}: ${hint}`}
-              title={used ? 'Hint already used' : available ? `Reveal hint ${hintLevel}` : 'Hint already used'}
+              aria-label={revealed ? `Hint ${hintLevel}: ${hint}` : `Hint ${hintLevel}`}
+              title={used ? 'Hint already used' : available ? `Reveal hint ${hintLevel}` : 'Use the previous hint first'}
               className={`w-full text-left p-3 rounded-lg border transition-colors ${
                 used
                   ? 'bg-gray-50 border-gray-200 text-muted'
@@ -70,7 +84,7 @@ export function ChallengePanel({
                 }`}>
                   {hintLevel}
                 </span>
-                <span className="flex-1 text-body">{hint}</span>
+                <span className="flex-1 text-body">{revealed ? hint : 'Locked — use the previous hint first'}</span>
                 {used && <CheckCircle className="w-4 h-4 text-green" aria-label="Used" />}
                 {available && !used && <Lightbulb className="w-4 h-4 text-accent-text-orange" aria-label="Available" />}
               </div>
@@ -103,6 +117,7 @@ export function ChallengePanel({
                   ? `Fidelity: ${(result.fidelity * 100).toFixed(1)}%`
                   : result.message}
               </p>
+              <p className="text-label font-semibold text-text mt-2">Score: {result.score}</p>
             </div>
           </div>
         </div>
