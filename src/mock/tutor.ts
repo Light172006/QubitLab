@@ -71,31 +71,70 @@ const GENERIC_EXPLANATIONS: Record<string, (facts: FactsPacket) => string> = {
   'code_edit': () => `The code was updated and the circuit was regenerated.`,
 };
 
+/**
+ * Off-topic guard for the ask box.
+ *
+ * The old keyword list contained the bare letters 'h', 'x', 'z', 's' and 't'
+ * and matched with `includes`, so "what is the weather?" contained an 'h' and
+ * was answered as a circuit question. Matching whole words against real
+ * quantum vocabulary sends a weather question to the redirect while
+ * "why does H give 50%" still gets a grounded answer.
+ */
+const QUANTUM_TERMS = new RegExp(
+  [
+    '\\bqubits?\\b', '\\bgates?\\b', '\\bhadamard\\b', '\\bpauli\\b', '\\bcnot\\b', '\\bcz\\b',
+    '\\bswap\\b', '\\bmeasure\\w*\\b', '\\bentangl\\w*\\b', '\\bsuperposition\\b',
+    '\\bphase\\b', '\\bamplitude\\b', '\\bprobabilit\\w*\\b', '\\bcircuit\\b', '\\bquantum\\b',
+    '\\bbloch\\b', '\\bket\\b', '\\bbra\\b', '\\bstatevector\\b', '\\bshots?\\b',
+    '\\bteleport\\w*\\b', '\\binterference\\b', '\\breversible\\b', '\\bbackend\\b',
+    '\\bsimulat\\w*\\b', '\\bq\\d+\\b', '\\bnot\\b', '\\bstabilis[er]+\\b', '\\bstate\\b',
+    // Bare gate letters, but only as whole words. No space in the class: a
+    // space is a word boundary on both sides, so "\b \b" matches any space.
+    '\\b[hxzs]\\b', '\\br[xyz]\\b',
+  ].join('|'),
+  'i'
+);
+
+export function isOffTopic(question: string): boolean {
+  return !QUANTUM_TERMS.test(question);
+}
+
+/** Splits text into stream-sized chunks, preserving word boundaries. */
+function chunkWords(text: string, size = 3): string[] {
+  const words = text.split(' ');
+  const chunks: string[] = [];
+  for (let i = 0; i < words.length; i += size) {
+    chunks.push(words.slice(i, i + size).join(' ') + ' ');
+  }
+  return chunks;
+}
+
+/** A question the tutor cannot use: say so and point back at the circuit. */
+function askRedirect(facts: FactsPacket, level: 'beginner' | 'intermediate'): string {
+  const head = level === 'beginner'
+    ? 'I am a circuit tutor, so I cannot help with that one.'
+    : 'That question is outside circuit simulation, which is the scope I cover.';
+  return `${head} I can explain the state of this ${facts.num_qubits}-qubit circuit, or how a specific gate changed it. For example: "why does q0 sit at 50%?" or "what did that last gate do?"`;
+}
+
 export async function* generateExplanation(facts: FactsPacket, _level: 'beginner' | 'intermediate'): AsyncGenerator<TutorEvent> {
   // Simulate LLM delay
   await new Promise(resolve => setTimeout(resolve, 1500));
 
-  // Check if we should use fallback (simulate 20% chance or when template is forced)
-  const useFallback = Math.random() < 0.2;
-
+  // Mock mode has no tutor backend, so this template stream *is* the fallback
+  // path. The old code picked it at random (Math.random() < 0.2) while emitting
+  // byte-identical text either way, which made the Offline badge appear at
+  // random and mean nothing. Reporting the path truthfully keeps it a signal.
   const template = GENERIC_EXPLANATIONS[facts.action.type] || (() => 'The circuit was modified.');
   const explanation = template(facts);
 
-  if (useFallback) {
-    yield { type: 'fallback', content: explanation, is_fallback: true };
-    // Stream the fallback text
-    const words = explanation.split(' ');
-    for (let i = 0; i < words.length; i += 3) {
-      yield { type: 'token', content: words.slice(i, i + 3).join(' ') + ' ' };
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-  } else {
-    // Stream the explanation
-    const words = explanation.split(' ');
-    for (let i = 0; i < words.length; i += 3) {
-      yield { type: 'token', content: words.slice(i, i + 3).join(' ') + ' ' };
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+  yield { type: 'fallback', content: explanation, is_fallback: true };
+
+  // Stream the explanation
+  const words = explanation.split(' ');
+  for (let i = 0; i < words.length; i += 3) {
+    yield { type: 'token', content: words.slice(i, i + 3).join(' ') + ' ' };
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 
   yield { type: 'done' };
@@ -106,12 +145,11 @@ export async function* answerQuestion(question: string, facts: FactsPacket, leve
 
   const q = question.toLowerCase();
 
-  // Off-topic detection
-  const quantumKeywords = ['qubit', 'gate', 'state', 'probability', 'bloch', 'entangl', 'superposition', 'measure', 'amplitude', 'phase', 'circuit', 'quantum', 'h', 'x', 'z', 'cnot', 'cz', 's', 't'];
-  const isOnTopic = quantumKeywords.some(kw => q.includes(kw));
-
-  if (!isOnTopic) {
-    yield { type: 'token', content: "I'm best at questions about your circuit. Want to know why the state looks like this?" };
+  if (isOffTopic(q)) {
+    for (const chunk of chunkWords(askRedirect(facts, level))) {
+      yield { type: 'token', content: chunk };
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
     yield { type: 'done' };
     return;
   }
@@ -145,9 +183,8 @@ export async function* answerQuestion(question: string, facts: FactsPacket, leve
     answer = answer.replace(/fidelity/gi, 'overlap').replace(/mixed state/gi, 'not a definite state').replace(/Born rule/gi, 'probability rule');
   }
 
-  const words = answer.split(' ');
-  for (let i = 0; i < words.length; i += 3) {
-    yield { type: 'token', content: words.slice(i, i + 3).join(' ') + ' ' };
+  for (const chunk of chunkWords(answer)) {
+    yield { type: 'token', content: chunk };
     await new Promise(resolve => setTimeout(resolve, 40));
   }
 

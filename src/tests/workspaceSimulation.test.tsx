@@ -152,6 +152,72 @@ describe('B5 undo/redo/reset must resimulate', () => {
   });
 });
 
+describe('D1 panels update within 100ms of a committed edit', () => {
+  it('simulates immediately after a committed circuit change', async () => {
+    renderWorkspace();
+    await flush();
+    simulate.mockClear();
+
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    // 50ms is well under the old 400ms debounce: the panels
+    // must already reflect the edit within the 100ms budget.
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(simulate.mock.calls.length).toBe(1);
+    expect(useTutorStore.getState().factsPacket).not.toBeNull();
+  });
+});
+
+describe('C4 Ctrl+Z / Ctrl+Shift+Z undo and redo', () => {
+  it('undoes a committed change with Ctrl+Z', async () => {
+    renderWorkspace();
+    await flush();
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    await flush();
+    expect(useCircuitStore.getState().circuit).toEqual(withH);
+
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(useCircuitStore.getState().circuit).toEqual(empty);
+    expect(useCircuitStore.getState().historyIndex).toBe(0);
+  });
+
+  it('redoes with Ctrl+Shift+Z', async () => {
+    renderWorkspace();
+    await flush();
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    await flush();
+
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(useCircuitStore.getState().circuit).toEqual(withH);
+    expect(useCircuitStore.getState().historyIndex).toBe(1);
+  });
+
+  it('does not hijack Ctrl+Z inside the code editor', async () => {
+    renderWorkspace();
+    await flush();
+    act(() => {
+      useCircuitStore.setState({ circuit: withH, history: [empty, withH], historyIndex: 1 });
+    });
+    await flush();
+
+    fireEvent.click(screen.getByRole('button', { name: /code/i }));
+    const editor = screen.getByLabelText('code');
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+    expect(useCircuitStore.getState().circuit).toEqual(withH);
+  });
+});
+
 describe('B6 a code edit must resimulate', () => {
   async function typeCode(code: string) {
     fireEvent.click(screen.getByRole('button', { name: /code/i }));

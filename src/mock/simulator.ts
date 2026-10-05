@@ -278,6 +278,7 @@ export function simulateCircuit(
     amplitudes,
     bloch,
     entangled_qubits: entangledQubits,
+    counts,
     changed_states: [] as string[],
     level: 'beginner' as const,
   };

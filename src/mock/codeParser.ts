@@ -32,14 +32,26 @@ export function parseCode(code: string): ParseReturn {
 
   const errors: Array<{ line: number; code: string; message: string }> = [];
 
+  // Qubit/clbit indices must address the register;
+  // out-of-range or non-integer arguments are errors.
+  const qubitInRange = (q: number) => Number.isInteger(q) && q >= 0 && q < numQubits;
+  const clbitInRange = (c: number) => Number.isInteger(c) && c >= 0 && c < numClbits;
+
   for (let i = 0; i < lines.length; i++) {
     const lineNum = i + 1;
     const line = lines[i].trim();
 
     if (!line || line.startsWith('#') || line.startsWith('//')) continue;
 
-    // Skip import statements
+    // Only the canonical Qiskit import is supported; every
+    // other import is an error, never a silent skip.
     if (line.startsWith('import ') || line.startsWith('from ')) {
+      if (line === 'from qiskit import QuantumCircuit') continue;
+      errors.push({
+        line: lineNum,
+        code: line,
+        message: 'Unsupported import (only "from qiskit import QuantumCircuit" is supported)',
+      });
       continue;
     }
 
@@ -102,6 +114,14 @@ export function parseCode(code: string): ParseReturn {
           if (arrayMatches && arrayMatches.length >= 2) {
             const qubits = arrayMatches[0].slice(1, -1).split(',').map(s => parseInt(s.trim()));
             const clbits = arrayMatches[1].slice(1, -1).split(',').map(s => parseInt(s.trim()));
+            const valid =
+              qubits.length === clbits.length &&
+              qubits.every(qubitInRange) &&
+              clbits.every(clbitInRange);
+            if (!valid) {
+              errors.push({ line: lineNum, code: line, message: `measure needs matching qubit and clbit lists inside the register (0..${numQubits - 1})` });
+              continue;
+            }
             for (let idx = 0; idx < qubits.length; idx++) {
               gates.push({
                 id: `g${gateCounter++}`,
@@ -117,6 +137,10 @@ export function parseCode(code: string): ParseReturn {
           // Simple format: measure(q, c)
           const simpleArgs = argsStr.split(',').map(s => parseInt(s.trim()));
           if (simpleArgs.length === 2) {
+            if (!qubitInRange(simpleArgs[0]) || !clbitInRange(simpleArgs[1])) {
+              errors.push({ line: lineNum, code: line, message: `measure needs qubit and clbit arguments inside the register (0..${numQubits - 1})` });
+              continue;
+            }
             qubitArg = simpleArgs[0];
             clbitArg = simpleArgs[1];
             gates.push({
@@ -134,8 +158,8 @@ export function parseCode(code: string): ParseReturn {
       }
 
       if (['CNOT', 'CZ'].includes(gateType)) {
-        if (args.length !== 2) {
-          errors.push({ line: lineNum, code: line, message: `${gateType} needs two qubit arguments (control, target)` });
+        if (args.length !== 2 || !qubitInRange(args[0]) || !qubitInRange(args[1])) {
+          errors.push({ line: lineNum, code: line, message: `${gateType} needs two qubit arguments (control, target) between 0 and ${numQubits - 1}` });
           continue;
         }
         gates.push({
@@ -146,8 +170,8 @@ export function parseCode(code: string): ParseReturn {
           column: column++,
         });
       } else {
-        if (args.length !== 1) {
-          errors.push({ line: lineNum, code: line, message: `${gateType} needs one qubit argument` });
+        if (args.length !== 1 || !qubitInRange(args[0])) {
+          errors.push({ line: lineNum, code: line, message: `${gateType} needs one qubit argument between 0 and ${numQubits - 1}` });
           continue;
         }
         gates.push({
@@ -192,6 +216,10 @@ export function toCode(circuit: Circuit): string {
   ];
 
   const sortedGates = [...circuit.gates].sort((a, b) => a.column - b.column);
+
+  if (sortedGates.length === 0) {
+    lines.push('# Try: qc.h(0)');
+  }
 
   for (const gate of sortedGates) {
     const method = GATE_METHODS[gate.type];

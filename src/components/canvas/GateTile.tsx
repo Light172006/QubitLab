@@ -50,9 +50,22 @@ export function GateTile({ gate, onRemove, isPlacingTarget, disabled }: GateTile
           : `${gate.type} gate on qubit ${gate.targets[0]}, column ${gate.column}`
       }
       aria-disabled={disabled}
-      title={disabled ? DISABLED_GATE_REASON : `Drag to move, or press Delete to remove`}
+      title={disabled ? DISABLED_GATE_REASON : `Drag to move, press Delete to remove, or press Space to pick up with the keyboard`}
       onMouseEnter={() => !disabled && setShowDelete(true)}
       onMouseLeave={() => setShowDelete(false)}
+      onKeyDown={(e) => {
+        // Keyboard removal, matching the tooltip promise. Every other key has to
+        // reach dnd-kit's keyboard activator, or a placed gate cannot be picked
+        // up and moved without a mouse.
+        if (!disabled && (e.key === 'Delete' || e.key === 'Backspace')) {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove(gate.id);
+          return;
+        }
+        if (e.key === 'Escape') return;
+        listeners?.onKeyDown?.(e);
+      }}
     >
       <div
         className="flex items-center justify-center w-full h-10 rounded-lg font-mono font-bold text-sm"

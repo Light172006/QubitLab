@@ -20,11 +20,23 @@ export function BlochSphere({ bloch, isEntangled }: BlochSphereProps) {
   const targetDirectionRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 1));
   const targetLengthRef = useRef(0.45);
   const isInitializedRef = useRef(false);
+  // The animation loop below is created once with an empty dependency list, so
+  // reading `reducedMotion` inside it captured the first (false) value forever
+  // and the media query had no effect on the arrow's motion at all. The loop
+  // reads this ref instead, which the listener below keeps current.
+  const reducedMotionRef = useRef(false);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReducedMotion(mediaQuery.matches);
-    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    const sync = () => {
+      reducedMotionRef.current = mediaQuery.matches;
+      setReducedMotion(mediaQuery.matches);
+    };
+    sync();
+    const handler = (e: MediaQueryListEvent) => {
+      reducedMotionRef.current = e.matches;
+      setReducedMotion(e.matches);
+    };
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
@@ -120,7 +132,7 @@ export function BlochSphere({ bloch, isEntangled }: BlochSphereProps) {
     const animate = () => {
       animationId = requestAnimationFrame(animate);
 
-      if (!reducedMotion) {
+      if (!reducedMotionRef.current) {
         // Smoothly interpolate current toward target
         const lerpFactor = 0.1;
         
@@ -149,7 +161,7 @@ export function BlochSphere({ bloch, isEntangled }: BlochSphereProps) {
       }
 
       // Rotate inner sphere for entangled state
-      if (innerSphereRef.current) {
+      if (innerSphereRef.current && !reducedMotionRef.current) {
         innerSphereRef.current.rotation.y += 0.002;
       }
 
@@ -159,11 +171,21 @@ export function BlochSphere({ bloch, isEntangled }: BlochSphereProps) {
     animate();
     isInitializedRef.current = true;
 
-    // Cleanup
+    // Cleanup. renderer.dispose() alone leaves the geometries, the materials
+    // and the WebGL context alive, so switching tabs repeatedly leaked one of
+    // each per sphere until the tab ran out of contexts.
     return () => {
       cancelAnimationFrame(animationId);
+      scene.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        mesh.geometry?.dispose?.();
+        const material = mesh.material;
+        if (Array.isArray(material)) material.forEach((m) => m.dispose());
+        else material?.dispose?.();
+      });
+      renderer.forceContextLoss();
       renderer.dispose();
-      if (mountRef.current) {
+      if (mountRef.current?.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
       arrowHelperRef.current = null;

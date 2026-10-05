@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { LessonPlayer, marginalProbabilities, stepCheckPassed } from '../components/lessons/LessonPlayer';
 import { useLessonStore } from '../store';
 import { getLessons } from '../mock/content';
@@ -61,7 +61,7 @@ beforeEach(() => {
   useLessonStore.setState({
     currentLesson: null,
     currentStepIndex: 0,
-    completedSteps: new Set(),
+    completedSteps: [],
   });
 });
 
@@ -104,13 +104,67 @@ describe('stepCheckPassed', () => {
   });
 });
 
+describe('G1 manual completion is a two-hint fallback', () => {
+  function renderStep() {
+    const onStepComplete = vi.fn();
+    useLessonStore.setState({
+      currentLesson: superposition,
+      currentStepIndex: 0,
+      completedSteps: [],
+    });
+    render(
+      <LessonPlayer
+        lesson={superposition}
+        currentStepIndex={0}
+        onStepChange={() => {}}
+        onStepComplete={onStepComplete}
+        circuit={{ version: 1, num_qubits: 2, gates: [] }}
+        facts={empty}
+      />
+    );
+    return onStepComplete;
+  }
+
+  it('hides Mark Complete until two hints are used', () => {
+    renderStep();
+    expect(screen.queryByText('Mark Complete')).toBeNull();
+    expect(screen.getByText('Get a hint')).toBeTruthy();
+  });
+
+  it('reveals hints one at a time', () => {
+    renderStep();
+    fireEvent.click(screen.getByText('Get a hint'));
+    expect(screen.getByText(/Watch the Live State panel/)).toBeTruthy();
+    expect(screen.queryByText('Mark Complete')).toBeNull();
+
+    fireEvent.click(screen.getByText('Hint 2'));
+    expect(screen.getByText(/completes automatically/)).toBeTruthy();
+    expect(screen.getByText('Mark Complete')).toBeTruthy();
+  });
+
+  it('marks the step complete from the fallback button', () => {
+    const onStepComplete = renderStep();
+    fireEvent.click(screen.getByText('Get a hint'));
+    fireEvent.click(screen.getByText('Hint 2'));
+    fireEvent.click(screen.getByText('Mark Complete'));
+    expect(onStepComplete).toHaveBeenCalledWith('L1S1');
+  });
+
+  it('stops offering hints after two', () => {
+    renderStep();
+    fireEvent.click(screen.getByText('Get a hint'));
+    fireEvent.click(screen.getByText('Hint 2'));
+    expect(screen.getByText('No more hints')).toBeTruthy();
+  });
+});
+
 describe('LessonPlayer auto-detection', () => {
   it('completes the current step the moment the circuit satisfies it', () => {
     const onStepComplete = vi.fn();
     useLessonStore.setState({
       currentLesson: superposition,
       currentStepIndex: 0,
-      completedSteps: new Set(),
+      completedSteps: [],
     });
 
     render(
@@ -150,7 +204,7 @@ describe('LessonPlayer auto-detection', () => {
       currentLesson: superposition,
       // Two steps behind us, both completed in the store.
       currentStepIndex: 2,
-      completedSteps: new Set(['L1S1', 'L1S2']),
+      completedSteps: ['L1S1', 'L1S2'],
     });
 
     render(

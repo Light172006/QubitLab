@@ -3,7 +3,8 @@ import { FactsPacket, Circuit } from '../../types';
 import { BlochSphere } from './BlochSphere';
 import { AmplitudeTable } from './AmplitudeTable';
 import { HistogramPanel } from './HistogramPanel';
-import { ChevronUp, BarChart2, Calculator, Layers, Eye, EyeOff, BarChart, Info } from 'lucide-react';
+import { ChevronUp, BarChart2, Calculator, Layers, Eye, EyeOff, BarChart } from 'lucide-react';
+import { fixed, labelForState } from '../../lib/format';
 
 interface StatePanelProps {
   circuit?: Circuit;
@@ -73,8 +74,10 @@ export function StatePanel({
             </div>
             <span className="w-12 text-right font-mono text-label text-text shrink-0">1.00</span>
           </div>
-          <p className="text-label text-muted text-center mt-2">
-            q1q0 — qubit 0 is the right-most bit (Qiskit order)
+          <p className="text-label text-muted mt-1">
+            {bitOrder === 'qiskit'
+              ? 'q1q0 — qubit 0 is the right-most bit (Qiskit order)'
+              : 'q0q1 — qubit 0 is the left-most bit (Canvas order)'}
           </p>
         </div>
       </div>
@@ -113,7 +116,7 @@ export function StatePanel({
 
   // Shots tab content - computed outside the ternary to avoid nesting issues.
   const shotsTabContent = hasMeasure && counts ? (
-    <HistogramPanel counts={counts} />
+    <HistogramPanel counts={counts} bitOrder={bitOrder} />
   ) : (
     <div className="text-center py-8 text-muted">
       <BarChart className="w-8 h-8 mx-auto mb-2" aria-hidden="true" />
@@ -176,7 +179,7 @@ export function StatePanel({
                   className={`flex items-center gap-3 ${changed ? 'animate-pulse-once' : ''} ${zeroProb ? 'opacity-40' : ''}`}
                 >
                   <span className="w-16 font-mono text-label text-text shrink-0">
-                    {bitOrder === 'qiskit' ? state : state.split('').reverse().join('')}
+                    {labelForState(state, bitOrder)}
                   </span>
                   <div className="flex-1 h-6 bg-gray-100 rounded overflow-hidden relative min-w-0">
                     <div
@@ -191,7 +194,7 @@ export function StatePanel({
                     )}
                   </div>
                   <span className="w-12 text-right font-mono text-label text-text shrink-0">
-                    {prob.toFixed(2)}
+                    {fixed(prob)}
                   </span>
                 </div>
               );
@@ -232,6 +235,7 @@ export function StatePanel({
           amplitudes={facts.amplitudes}
           probabilities={probabilities}
           level={level}
+          bitOrder={bitOrder}
         />
       </Card>
 
@@ -261,7 +265,7 @@ export function StatePanel({
                 />
                 <p className="text-label font-medium text-muted mt-1">q{b.q}</p>
                 <p className="font-mono text-label text-muted break-words">
-                  ({b.x.toFixed(2)}, {b.y.toFixed(2)}, {b.z.toFixed(2)}) p={b.purity.toFixed(2)}
+                  ({fixed(b.x)}, {fixed(b.y)}, {fixed(b.z)}) p={fixed(b.purity)}
                 </p>
                 {entangledQubits.includes(b.q) && (
                   <span className="mt-1 px-1.5 py-0.5 text-[11px] font-medium rounded-full bg-orange-tint text-accent-text-orange">
@@ -272,6 +276,15 @@ export function StatePanel({
             ))}
           </div>
         </Card>
+      )}
+      {!showBloch && bloch.length > 0 && (
+        <button
+          onClick={() => setShowBloch(true)}
+          className="flex items-center gap-2 text-label font-medium text-brand-text hover:underline mt-4"
+        >
+          <Eye className="w-4 h-4" aria-hidden="true" />
+          Show Bloch spheres ({bloch.length})
+        </button>
       )}
     </div>
   );

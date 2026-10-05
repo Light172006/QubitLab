@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   closestCorners,
@@ -14,21 +14,50 @@ import { useCircuitStore, useUIStore, useLessonStore, useChallengeStore, useTuto
 import { api } from '../api/client';
 import {
   CircuitCanvas,
-  isCellFree,
   moveGateInCircuit,
   removeGateFromCircuit,
+  completeTwoQubitPlacement,
+  rejectReasonForCell,
 } from '../components/canvas/CircuitCanvas';
 import { CanvasToolbar } from '../components/canvas/CanvasToolbar';
 import { GatePalette } from '../components/canvas/GatePalette';
+import { useTwoQubitPlacement } from '../components/canvas/useTwoQubitPlacement';
 import { StateDashboard } from '../components/state/StateDashboard';
 import { TutorDrawer } from '../components/tutor/TutorDrawer';
 import { CodeEditor } from '../components/canvas/CodeEditor';
 import { LessonPlayer } from '../components/lessons/LessonPlayer';
 import { TopBar } from '../components/common/TopBar';
-import { Gate, GateType } from '../types';
-import { ChevronLeft, ChevronRight, Code, LayoutGrid } from 'lucide-react';
+import { Gate, GateType, Lesson } from '../types';
+import { ChevronLeft, ChevronRight, Code, LayoutGrid, AlertTriangle } from 'lucide-react';
 
 const COLUMNS = 10;
+
+/**
+ * Basis states whose probability moved by more than the panel's
+ * 0.01 highlight threshold, in the current distribution's order.
+ * Drives the changed-state pulse and the dimmed zero rows; the
+ * simulator cannot know the previous state, so the workspace
+ * derives the diff from its own last snapshot.
+ */
+export function computeStateDiff(
+  prev: Record<string, number>,
+  next: Record<string, number>
+): string[] {
+  const changed = new Set<string>();
+  for (const [state, prob] of Object.entries(next)) {
+    if (Math.abs(prob - (prev[state] || 0)) > 0.01) changed.add(state);
+  }
+  // States that vanished from the distribution come last,
+  // in the previous distribution's order.
+  const disappeared: string[] = [];
+  for (const state of Object.keys(prev)) {
+    if (!(state in next) && prev[state] > 0.01) {
+      changed.add(state);
+      disappeared.push(state);
+    }
+  }
+  return [...Object.keys(next).filter((state) => changed.has(state)), ...disappeared];
+}
 
 function sortableKeyboardCoordinates(event: KeyboardEvent) {
   const { key } = event;
@@ -41,6 +70,7 @@ function sortableKeyboardCoordinates(event: KeyboardEvent) {
 
 export default function Workspace() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { circuit, setCircuit, undo, redo, reset, historyIndex, history } = useCircuitStore();
   const { level, bitOrder, leftRailOpen, setLeftRailOpen } = useUIStore();
   const { currentLesson, currentStepIndex, setCurrentLesson, setCurrentStep, markStepComplete } = useLessonStore();
@@ -60,21 +90,55 @@ export default function Workspace() {
   const [codeTimeout, setCodeTimeout] = useState<ReturnType<typeof setTimeout>>();
   const isFirstRun = useRef(true);
   const runIdRef = useRef(0);
-  const [placingTwoQubit, setPlacingTwoQubit] = useState<{ gate: Gate; control: number } | null>(null);
+  /** Last simulated distribution, for the changed-state diff. */
+  const prevProbabilitiesRef = useRef<Record<string, number>>({});
+  // CNOT/CZ waiting for its target wire; Escape cancels.
+  const [placingTwoQubit, setPlacingTwoQubit] = useTwoQubitPlacement();
   const [draggedGateType, setDraggedGateType] = useState<string | null>(null);
+  /** Why the last canvas interaction was refused. Announced, then cleared. */
+  const [canvasNotice, setCanvasNotice] = useState<string | null>(null);
+  /**
+   * `?lesson=L2` opens a specific lesson; `?sandbox=1` opens free building
+   * with no lesson at all. Without either, the persisted lesson is used, so a
+   * refresh keeps the student where they were.
+   */
+  const requestedLessonId = searchParams.get('lesson');
+  const isSandbox = searchParams.get('sandbox') === '1';
+  /** The sandbox is free building: no lesson panel, and no progress to lose. */
+  const activeLesson = isSandbox ? null : currentLesson;
+
+  const reject = (reason: string) => {
+    setCanvasNotice(reason);
+    window.setTimeout(() => setCanvasNotice((current) => (current === reason ? null : current)), 6000);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   useEffect(() => {
-    api.getLessons().then((lessons) => {
-      if (lessons.length > 0 && !currentLesson) {
-        setCurrentLesson(lessons[0]);
+    api.getLessons().then(setLessons).catch(() => setLessons([]));
+  }, []);
+
+  /**
+   * Pick the lesson to show. An explicit ?lesson= wins, so a lesson card can
+   * open itself; otherwise the persisted lesson is kept, so a refresh does not
+   * throw away progress. ?sandbox=1 opens the canvas with no lesson panel at
+   * all - it used to reset the lesson and then immediately reload lesson 1.
+   */
+  useEffect(() => {
+    if (isSandbox || lessons.length === 0) return;
+    if (requestedLessonId) {
+      const requested = lessons.find((lesson) => lesson.id === requestedLessonId);
+      if (requested && currentLesson?.id !== requested.id) {
+        setCurrentLesson(requested);
+        return;
       }
-    });
-  }, [currentLesson, setCurrentLesson]);
+    }
+    if (!currentLesson) setCurrentLesson(lessons[0]);
+  }, [lessons, requestedLessonId, isSandbox, currentLesson, setCurrentLesson]);
 
   /**
    * Simulation is driven by the circuit in the store, so every committed change
@@ -90,10 +154,21 @@ export default function Workspace() {
     // next checkpoint instead of interleaving tokens from a stale circuit.
     const runId = ++runIdRef.current;
     const isStale = () => runIdRef.current !== runId;
-    const timeout = setTimeout(async () => {
+    // Committed edits are discrete events: simulate immediately so the
+    // Live State panels update within the 100ms budget. Code edits are
+    // already debounced in handleCodeChange.
+    void (async () => {
       const result = await api.simulate(circuit, useUIStore.getState().shots);
       if (isStale()) return;
-      const facts = result.facts;
+      // The diff needs the previous distribution, which only the
+      // workspace holds: attach it plus the changed states.
+      const prevProbabilities = prevProbabilitiesRef.current;
+      const facts = {
+        ...result.facts,
+        prev_probabilities: prevProbabilities,
+        changed_states: computeStateDiff(prevProbabilities, result.probabilities),
+      };
+      prevProbabilitiesRef.current = result.probabilities;
       setFactsPacket(facts);
       clearExplanation();
       setStreaming(true);
@@ -107,13 +182,34 @@ export default function Workspace() {
       setStreaming(false);
       // Files this explanation into the tutor scrollback, open drawer or not.
       commitExplanation();
-    }, 400);
-    return () => clearTimeout(timeout);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circuit]);
 
   // Unmounting mid-stream would otherwise keep appending to a store nobody reads.
   useEffect(() => () => { runIdRef.current += 1; }, []);
+
+  // Undo/redo shortcuts: Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS).
+  // Text fields keep their own undo (the code editor, ask box).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key !== 'z' && event.key !== 'Z') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping =
+        tag === 'input' || tag === 'textarea' || tag === 'select' || !!target?.isContentEditable;
+      if (isTyping) return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        useCircuitStore.getState().redo();
+      } else {
+        useCircuitStore.getState().undo();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleCircuitChange = (newCircuit: typeof circuit) => {
     setCircuit(newCircuit);
@@ -182,14 +278,24 @@ export default function Workspace() {
     const movedGateId = active.data.current?.gateId as string | undefined;
     if (movedGateId) {
       const next = moveGateInCircuit(circuit, movedGateId, qubit, column);
-      if (next !== circuit) setCircuit(next);
+      if (next === circuit) {
+        reject(rejectReasonForCell(circuit, qubit, column)
+          ?? `${over.id.toString().replace('cell-', 'q')} already holds a gate. Move it somewhere free.`);
+        return;
+      }
+      setCircuit(next);
+      setCanvasNotice(null);
       return;
     }
 
     // A palette gate was dragged: place it.
     const gateType = active.data.current?.gateType as GateType | undefined;
     if (!gateType) return;
-    if (!isCellFree(circuit, qubit, column)) return;
+    const blocked = rejectReasonForCell(circuit, qubit, column);
+    if (blocked) {
+      reject(blocked);
+      return;
+    }
 
     const newGate: Gate = {
       id: `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
@@ -205,17 +311,19 @@ export default function Workspace() {
     } else {
       commit([...circuit.gates, newGate]);
     }
+    setCanvasNotice(null);
   };
 
   const handleCellClick = (qubit: number, column: number) => {
     if (!placingTwoQubit) return;
-    if (qubit === placingTwoQubit.control) {
-      alert('A qubit cannot be both control and target. Pick a different wire.');
+    const result = completeTwoQubitPlacement(circuit, placingTwoQubit, qubit, column);
+    if (!result.ok) {
+      reject(result.reason);
       return;
     }
-    if (!isCellFree(circuit, qubit, column)) return;
-    commit([...circuit.gates, { ...placingTwoQubit.gate, targets: [qubit], controls: [placingTwoQubit.control] }]);
+    setCircuit(result.circuit);
     setPlacingTwoQubit(null);
+    setCanvasNotice(null);
   };
 
   const handleRemoveGate = (gateId: string) => {
@@ -231,9 +339,9 @@ export default function Workspace() {
         bitOrder={bitOrder}
         setBitOrder={(o) => useUIStore.getState().setBitOrder(o)}
         onSandboxClick={() => {
-          useLessonStore.getState().resetLesson();
+          // Free building, no lesson - and without wiping lesson progress.
           useChallengeStore.getState().resetChallenge();
-          navigate('/workspace');
+          navigate('/workspace?sandbox=1');
         }}
       />
 
@@ -242,14 +350,18 @@ export default function Workspace() {
         {/* Left Rail */}
         <aside className={`${leftRailOpen ? 'w-72' : 'w-16'} flex-shrink-0 bg-white border-r border-gray-200 flex flex-col transition-all duration-200`}>
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            {leftRailOpen && currentLesson && (
+            {leftRailOpen && activeLesson && (
               <div className="flex-1 min-w-0">
                 <p className="text-label font-semibold uppercase tracking-wide text-muted">
-                  Lesson {currentLesson.order}
+                  {isSandbox ? 'Sandbox' : `Lesson ${activeLesson.order}`}
                 </p>
-                <h3 className="font-medium text-text truncate">{currentLesson.title}</h3>
+                <h3 className="font-medium text-text truncate">
+                  {isSandbox ? 'Free circuit building' : activeLesson.title}
+                </h3>
                 <p className="text-label text-muted mt-1">
-                  Step {currentStepIndex + 1} of {currentLesson.steps?.length || 0}
+                  {isSandbox
+                    ? 'No lesson, no limits'
+                    : `Step ${currentStepIndex + 1} of ${activeLesson.steps?.length || 0}`}
                 </p>
               </div>
             )}
@@ -263,9 +375,9 @@ export default function Workspace() {
             </button>
           </div>
 
-          {leftRailOpen && currentLesson && (
+          {leftRailOpen && activeLesson && (
             <LessonPlayer
-              lesson={currentLesson}
+              lesson={activeLesson}
               currentStepIndex={currentStepIndex}
               onStepChange={setCurrentStep}
               onStepComplete={markStepComplete}
@@ -338,6 +450,15 @@ export default function Workspace() {
                   role="region"
                   aria-label={activeTab === 'canvas' ? 'Circuit' : 'Code editor'}
                 >
+                  {canvasNotice && activeTab === 'canvas' && (
+                    <p
+                      role="status"
+                      className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 text-label rounded-lg bg-orange-tint border border-orange/30 text-accent-text-orange"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                      {canvasNotice}
+                    </p>
+                  )}
                   {activeTab === 'canvas' ? (
                     <CircuitCanvas
                       circuit={circuit}

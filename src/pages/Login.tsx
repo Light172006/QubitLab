@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store';
 import { api } from '../api/client';
 import { GraduationCap, Award } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setUser = useAuthStore((s) => s.setUser);
   
   const [isRegister, setIsRegister] = useState(false);
@@ -15,6 +16,13 @@ export default function Login() {
   const [role, setRole] = useState<'student' | 'instructor'>('student');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  /** The page the user was headed to, or the role's default. */
+  const destinationFor = (userRole: 'student' | 'instructor') => {
+    const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname;
+    if (from && from !== '/login') return from;
+    return userRole === 'instructor' ? '/dashboard' : '/learn';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +40,7 @@ export default function Login() {
         user = await api.login(email, password);
       }
       setUser(user);
-      navigate(user.role === 'instructor' ? '/dashboard' : '/learn', { replace: true });
+      navigate(destinationFor(user.role), { replace: true });
     } catch (err: any) {
       setError(err.message || 'Authentication failed. Please try again.');
     } finally {

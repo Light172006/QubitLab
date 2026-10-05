@@ -61,6 +61,8 @@ export interface FactsPacket {
   amplitudes: Record<string, Amplitude>;
   bloch: BlochVector[];
   entangled_qubits: number[];
+  /** Shot counts, or null until the circuit contains a Measure gate. */
+  counts?: Record<string, number> | null;
   changed_states: string[];
   level: 'beginner' | 'intermediate';
 }

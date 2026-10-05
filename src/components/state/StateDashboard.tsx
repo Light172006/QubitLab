@@ -29,7 +29,9 @@ export function StateDashboard({
           <h2 className="text-body font-semibold text-text">Live State</h2>
         </div>
         <p className="text-label text-muted text-center shrink-0">
-          q1q0 — qubit 0 is the right-most bit (Qiskit order)
+          {bitOrder === 'qiskit'
+            ? 'q1q0 — qubit 0 is the right-most bit (Qiskit order)'
+            : 'q0q1 — qubit 0 is the left-most bit (Canvas order)'}
         </p>
       </header>
 

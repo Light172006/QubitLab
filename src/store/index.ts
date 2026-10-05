@@ -44,7 +44,15 @@ interface UIState {
 interface LessonState {
   currentLesson: Lesson | null;
   currentStepIndex: number;
-  completedSteps: Set<string>;
+  /**
+   * Ids of the steps the student has actually completed.
+   *
+   * A plain array, not a Set: zustand's persist serialises with JSON, and
+   * `JSON.stringify(new Set(['a']))` is `{}`. Rehydrating that left
+   * `completedSteps.has is not a function` and crashed the workspace on the
+   * second visit. (See src/tests/persistedState.test.ts.)
+   */
+  completedSteps: string[];
   setCurrentLesson: (lesson: Lesson | null) => void;
   setCurrentStep: (index: number) => void;
   markStepComplete: (stepId: string) => void;
@@ -93,6 +101,17 @@ interface CodeState {
 }
 
 const initialCircuit: Circuit = { version: 1, num_qubits: 2, gates: [] };
+
+/**
+ * A persisted circuit is untrusted input: localStorage can hold a truncated
+ * write or a hand-edited value, and `circuit.gates` is dereferenced on the
+ * first render. Only accept a shape the simulator can actually consume.
+ */
+function isCircuit(value: unknown): value is Circuit {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<Circuit>;
+  return typeof candidate.num_qubits === 'number' && Array.isArray(candidate.gates);
+}
 
 export const useCircuitStore = create<CircuitState>()(
   persist(
@@ -144,7 +163,23 @@ export const useCircuitStore = create<CircuitState>()(
         get().setCircuit(newCircuit);
       },
     }),
-    { name: 'qubitlab-circuit' }
+    {
+      name: 'qubitlab-circuit',
+      /** Drop anything that is not a usable circuit instead of crashing on it. */
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<CircuitState>;
+        const circuit = isCircuit(stored.circuit) ? stored.circuit : current.circuit;
+        const history = Array.isArray(stored.history) && stored.history.every(isCircuit) && stored.history.length > 0
+          ? stored.history
+          : [circuit];
+        const storedIndex = stored.historyIndex;
+        const historyIndex =
+          typeof storedIndex === 'number' && Number.isInteger(storedIndex) && storedIndex >= 0 && storedIndex < history.length
+            ? storedIndex
+            : history.length - 1;
+        return { ...current, ...stored, circuit, history, historyIndex };
+      },
+    }
   )
 );
 
@@ -198,20 +233,40 @@ export const useLessonStore = create<LessonState>()(
     (set, get) => ({
       currentLesson: null,
       currentStepIndex: 0,
-      completedSteps: new Set<string>(),
-      setCurrentLesson: (lesson) => set({ currentLesson: lesson, currentStepIndex: 0, completedSteps: new Set() }),
+      completedSteps: [],
+      setCurrentLesson: (lesson) => set({ currentLesson: lesson, currentStepIndex: 0, completedSteps: [] }),
       setCurrentStep: (index) => set({ currentStepIndex: index }),
       markStepComplete: (stepId) => set((state) => {
-        const newCompletedSteps = new Set([...state.completedSteps, stepId]);
+        // Idempotent: a step that is already counted must not be counted twice.
+        const completedSteps = state.completedSteps.includes(stepId)
+          ? state.completedSteps
+          : [...state.completedSteps, stepId];
         // Auto-advance to next step if available
-        const nextStepIndex = state.currentLesson?.steps.length 
+        const nextStepIndex = state.currentLesson?.steps.length
           ? Math.min(state.currentStepIndex + 1, state.currentLesson.steps.length - 1)
           : state.currentStepIndex;
-        return { completedSteps: newCompletedSteps, currentStepIndex: nextStepIndex };
+        return { completedSteps, currentStepIndex: nextStepIndex };
       }),
-      resetLesson: () => set({ currentLesson: null, currentStepIndex: 0, completedSteps: new Set() }),
+      resetLesson: () => set({ currentLesson: null, currentStepIndex: 0, completedSteps: [] }),
     }),
-    { name: 'qubitlab-lesson' }
+    {
+      name: 'qubitlab-lesson',
+      /**
+       * Anything already in localStorage is untrusted: a v1 payload stores
+       * `completedSteps` as `{}` (the mangled Set) and a hand-edited value can
+       * be any shape at all. Coerce to a string array instead of trusting it,
+       * so a corrupt value can never reach `.includes`.
+       */
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<LessonState>;
+        const ids = stored.completedSteps;
+        return {
+          ...current,
+          ...stored,
+          completedSteps: Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [],
+        };
+      },
+    }
   )
 );
 

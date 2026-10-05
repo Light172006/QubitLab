@@ -136,12 +136,23 @@ export function TutorDrawer({ onAsk }: TutorDrawerProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, setTutorDrawerOpen, toggleTutorDrawer]);
 
-  const handleAsk = (event: React.FormEvent) => {
-    event.preventDefault();
+  const send = () => {
     const trimmed = question.trim();
     if (!trimmed || isStreaming) return;
     setQuestion('');
     void onAsk(trimmed);
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    send();
+  };
+
+  // Enter sends; Shift+Enter inserts a newline.
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    send();
   };
 
   const isEmpty = messages.length === 0 && !explanation;
@@ -221,20 +232,21 @@ export function TutorDrawer({ onAsk }: TutorDrawerProps) {
         )}
       </div>
 
-      <form onSubmit={handleAsk} className="p-3 border-t border-gray-200 bg-white shrink-0">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 bg-white shrink-0">
         <label htmlFor="tutor-question" className="sr-only">
           Ask the tutor a question
         </label>
-        <div className="flex gap-2">
-          <input
+        <div className="flex gap-2 items-end">
+          <textarea
             id="tutor-question"
-            type="text"
+            rows={2}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Ask about the circuit..."
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about the circuit... (Enter to send, Shift+Enter for a new line)"
             disabled={isStreaming}
-            title={isStreaming ? 'Wait for the current explanation to finish' : 'Ask a follow-up question'}
-            className="flex-1 px-3 py-2 text-body text-text bg-white border border-gray-300 rounded-lg placeholder:text-muted disabled:text-muted disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-brand focus:border-transparent"
+            title={isStreaming ? 'Wait for the current explanation to finish' : 'Ask a follow-up question (Enter to send, Shift+Enter for a new line)'}
+            className="flex-1 px-3 py-2 text-body text-text bg-white border border-gray-300 rounded-lg resize-y max-h-32 min-h-[2.75rem] placeholder:text-muted disabled:text-muted disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-brand focus:border-transparent"
           />
           <button
             type="submit"
@@ -246,6 +258,10 @@ export function TutorDrawer({ onAsk }: TutorDrawerProps) {
             Send
           </button>
         </div>
+        <p className="mt-1 text-label text-muted">
+          <kbd className="px-1 py-0.5 bg-gray-100 rounded font-mono">Enter</kbd> to send,
+          <kbd className="px-1 py-0.5 bg-gray-100 rounded font-mono ml-1">Shift+Enter</kbd> for a new line
+        </p>
       </form>
     </aside>
   );

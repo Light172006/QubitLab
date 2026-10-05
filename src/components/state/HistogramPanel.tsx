@@ -1,13 +1,29 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { labelForState } from '../../lib/format';
 
 interface HistogramPanelProps {
   counts: Record<string, number>;
+  /** Relabels the basis states; the counts are identical either way. */
+  bitOrder?: 'qiskit' | 'canvas';
 }
 
-export function HistogramPanel({ counts }: HistogramPanelProps) {
-  const data = Object.entries(counts)
+/**
+ * Chart rows for the shot histogram.
+ *
+ * Sorting stays on the underlying key, so switching to canvas order relabels
+ * the bars without reordering them, and the counts are untouched either way.
+ */
+export function histogramData(
+  counts: Record<string, number>,
+  bitOrder: 'qiskit' | 'canvas' = 'qiskit'
+): Array<{ state: string; count: number }> {
+  return Object.entries(counts)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([state, count]) => ({ state, count }));
+    .map(([state, count]) => ({ state: labelForState(state, bitOrder), count }));
+}
+
+export function HistogramPanel({ counts, bitOrder = 'qiskit' }: HistogramPanelProps) {
+  const data = histogramData(counts, bitOrder);
 
   const total = data.reduce((sum, d) => sum + d.count, 0);
 

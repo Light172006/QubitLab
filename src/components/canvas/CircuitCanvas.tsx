@@ -44,6 +44,73 @@ export function isCellFree(circuit: Circuit, wire: number, column: number, ignor
   return !isLockedByMeasure(circuit, wire, column) && !isOccupied(circuit, wire, column, ignoreId);
 }
 
+/**
+ * A two-qubit gate fits in a column when BOTH wires are free
+ * there. The control wire must be checked too: the user picks
+ * it first, but it occupies the same column as the target.
+ */
+export function canPlaceTwoQubit(
+  circuit: Circuit,
+  control: number,
+  target: number,
+  column: number
+): boolean {
+  if (control === target) return false;
+  return isCellFree(circuit, control, column) && isCellFree(circuit, target, column);
+}
+
+export interface TwoQubitPlacement {
+  gate: Gate;
+  control: number;
+}
+
+/**
+ * Turn a clicked target wire into a committed two-qubit gate, or explain why
+ * the click was refused.
+ *
+ * The gate always lands in the CONTROL's column, so that is the column both
+ * wires must be validated in. The old code validated the *clicked* column and
+ * then committed at the control's column: clicking q1 at column 3 for a
+ * control dropped at column 1 passed the check and then drew the CNOT at
+ * column 1, where both wires were already occupied - two gates sharing a qubit
+ * in one column, with a control dot and no matching target.
+ */
+export function completeTwoQubitPlacement(
+  circuit: Circuit,
+  placement: TwoQubitPlacement,
+  targetQubit: number,
+  clickedColumn: number
+): { ok: true; circuit: Circuit } | { ok: false; reason: string } {
+  const column = placement.gate.column;
+
+  if (targetQubit === placement.control) {
+    return { ok: false, reason: `q${placement.control} is already the control. Pick a different wire as the target.` };
+  }
+  if (clickedColumn !== column) {
+    return { ok: false, reason: `Pick the target in column t=${column}, the same column as the control.` };
+  }
+  if (!canPlaceTwoQubit(circuit, placement.control, targetQubit, column)) {
+    return { ok: false, reason: `t=${column} is already occupied on one of those wires. Drop the control somewhere else first.` };
+  }
+
+  const gates = [
+    ...circuit.gates,
+    { ...placement.gate, targets: [targetQubit], controls: [placement.control] },
+  ].sort((a, b) => a.column - b.column);
+  return { ok: true, circuit: { ...circuit, gates } };
+}
+
+/** Why a palette gate cannot be dropped on a cell, or null when it can. */
+export function rejectReasonForCell(circuit: Circuit, wire: number, column: number): string | null {
+  if (isLockedByMeasure(circuit, wire, column)) {
+    return `t=${column} is after a measurement on q${wire}. Measurement is terminal on a wire.`;
+  }
+  if (isOccupied(circuit, wire, column)) {
+    return `t=${column} on q${wire} already holds a gate. Move or delete it first.`;
+  }
+  return null;
+}
+
 export function removeGateFromCircuit(circuit: Circuit, gateId: string): Circuit {
   if (!circuit.gates.some((gate) => gate.id === gateId)) return circuit;
   return { ...circuit, gates: circuit.gates.filter(g => g.id !== gateId) };

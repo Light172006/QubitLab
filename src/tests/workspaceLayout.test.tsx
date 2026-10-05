@@ -106,14 +106,14 @@ describe('Workspace layout', () => {
   it('shows the gate palette on the Canvas tab and hides it on the Code tab', () => {
     renderWorkspace();
 
-    const palette = screen.getByRole('list', { name: 'Gate palette' });
+    const palette = screen.getByRole('group', { name: 'Gate palette' });
     expect(palette).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /code/i }));
-    expect(screen.queryByRole('list', { name: 'Gate palette' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Gate palette' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /canvas/i }));
-    expect(screen.getByRole('list', { name: 'Gate palette' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Gate palette' })).toBeTruthy();
   });
 
   it('gives the Code editor a definite height', () => {

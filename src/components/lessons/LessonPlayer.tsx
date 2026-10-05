@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Lesson, LessonStep, FactsPacket } from '../../types';
-import { CheckCircle, ChevronRight, HelpCircle, CircleCheck } from 'lucide-react';
+import { CheckCircle, ChevronRight, HelpCircle, CircleCheck, Lightbulb } from 'lucide-react';
 import { useLessonStore } from '../../store';
+import { qubitMarginal, probabilitiesMatch } from '../../mock/content';
 
 interface LessonPlayerProps {
   lesson: Lesson;
@@ -21,30 +22,15 @@ export function marginalProbabilities(
   facts: FactsPacket,
   qubit: number
 ): Record<string, number> {
-  const position = facts.num_qubits - 1 - qubit;
-  const out: Record<string, number> = { '0': 0, '1': 0 };
-  for (const [state, prob] of Object.entries(facts.probabilities)) {
-    const bit = state[position] === '1' ? '1' : '0';
-    out[bit] = (out[bit] || 0) + prob;
-  }
-  return out;
-}
-
-function targetsMatch(
-  actual: Record<string, number>,
-  target: Record<string, number>,
-  tol: number
-): boolean {
-  return Object.entries(target).every(
-    ([key, value]) => Math.abs((actual[key] ?? 0) - value) <= tol
-  );
+  return qubitMarginal(facts.probabilities, facts.num_qubits, qubit);
 }
 
 /**
  * A step is complete when the live circuit satisfies its check_spec:
  * probability steps compare against a qubit marginal (single-bit
  * targets) or the full distribution, entanglement steps check the
- * entangled qubit list.
+ * entangled qubit list. Both comparisons live in mock/content so this
+ * panel and api.checkLessonStep cannot drift apart.
  */
 export function stepCheckPassed(
   step: LessonStep,
@@ -58,24 +44,20 @@ export function stepCheckPassed(
   }
 
   if (spec.type === 'probability' && spec.target) {
-    const tol = spec.tol ?? 0.05;
-    const targetKeys = Object.keys(spec.target);
-    if (targetKeys.every((k) => k === '0' || k === '1')) {
-      // Single-qubit marginal: any wire may satisfy the step.
-      for (let q = 0; q < facts.num_qubits; q++) {
-        if (targetsMatch(marginalProbabilities(facts, q), spec.target, tol)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (targetKeys.every((k) => k.length === facts.num_qubits)) {
-      return targetsMatch(facts.probabilities, spec.target, tol);
-    }
+    return probabilitiesMatch(facts.probabilities, facts.num_qubits, spec.target, spec.tol ?? 0.05);
   }
 
   return false;
 }
+
+/**
+ * Lesson hints are generic: the step's own instruction
+ * and tutor_context already carry the specific guidance.
+ */
+const LESSON_HINTS = [
+  'Watch the Live State panel — it updates the moment you place a gate.',
+  'The step completes automatically once the circuit matches the instruction above.',
+];
 
 export function LessonPlayer({
   lesson,
@@ -86,18 +68,25 @@ export function LessonPlayer({
   facts,
 }: LessonPlayerProps) {
   const step = lesson.steps[currentStepIndex];
-  const completedSteps = lesson.steps.slice(0, currentStepIndex);
-  const remainingSteps = lesson.steps.slice(currentStepIndex + 1);
-  // The store tracks every completed step id, so the count reflects
-  // real completions rather than the position of the current step.
+  // The store tracks every completed step id, so the count and the lists below
+  // reflect real completions rather than the position of the current step.
   const { completedSteps: completedIds } = useLessonStore();
-  const doneCount = completedIds.size;
+  const doneCount = completedIds.length;
+  const completedSteps = lesson.steps.filter((s) => completedIds.includes(s.id));
+  const remainingSteps = lesson.steps.filter((s) => !completedIds.includes(s.id) && s.id !== step?.id);
   const currentSatisfied = step ? stepCheckPassed(step, facts) : false;
+  // Manual completion is a fallback, offered only after two hints.
+  const [hintsUsed, setHintsUsed] = useState(0);
+
+  // Hints reset per step.
+  useEffect(() => {
+    setHintsUsed(0);
+  }, [step?.id]);
 
   // Auto-detect: the moment the circuit satisfies the current step,
   // complete it (the store auto-advances to the next step).
   useEffect(() => {
-    if (step && !completedIds.has(step.id) && currentSatisfied) {
+    if (step && !completedIds.includes(step.id) && currentSatisfied) {
       onStepComplete(step.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,13 +132,22 @@ export function LessonPlayer({
                 Build the circuit to complete this step
               </span>
             )}
-            <button
-              className="ml-auto px-3 py-1.5 text-sm bg-brand text-white rounded-lg hover:bg-brand/90 transition-colors"
-              onClick={() => onStepComplete(step.id)}
-            >
-              Mark Complete
-            </button>
+            {/* Manual complete: fallback only after two hints. */}
+            {hintsUsed >= LESSON_HINTS.length && (
+              <button
+                className="ml-auto px-3 py-1.5 text-sm bg-brand text-white rounded-lg hover:bg-brand/90 transition-colors"
+                onClick={() => onStepComplete(step.id)}
+              >
+                Mark Complete
+              </button>
+            )}
           </div>
+          {hintsUsed > 0 && (
+            <p className="mt-2 text-sm text-muted">
+              <Lightbulb className="w-4 h-4 inline mr-1" aria-hidden="true" />
+              {LESSON_HINTS[hintsUsed - 1]}
+            </p>
+          )}
         </div>
       )}
 
@@ -181,7 +179,7 @@ export function LessonPlayer({
           <div className="mt-2 space-y-2 pl-6 border-l border-gray-200">
             {remainingSteps.map((s, idx) => (
               <div key={s.id} className="flex items-center gap-2 text-sm text-muted">
-                <span className="w-4 h-4 flex-shrink-0 text-label">{currentStepIndex + idx + 2}</span>
+                <span className="w-4 h-4 flex-shrink-0 text-label">{lesson.steps.indexOf(s) + 1}</span>
                 <span>{s.instruction}</span>
               </div>
             ))}
@@ -189,10 +187,18 @@ export function LessonPlayer({
         </details>
       )}
 
-      {/* Hint */}
-      <button className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-muted hover:bg-gray-50 transition-colors">
+      {/* Hint: reveals one at a time, up to two. */}
+      <button
+        className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm text-muted hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        onClick={() => setHintsUsed((h) => Math.min(h + 1, LESSON_HINTS.length))}
+        disabled={hintsUsed >= LESSON_HINTS.length}
+      >
         <HelpCircle className="w-4 h-4 inline mr-1" aria-hidden="true" />
-        Get a hint
+        {hintsUsed === 0
+          ? 'Get a hint'
+          : hintsUsed >= LESSON_HINTS.length
+            ? 'No more hints'
+            : `Hint ${hintsUsed + 1}`}
       </button>
     </div>
   );

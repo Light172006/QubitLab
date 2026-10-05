@@ -5,6 +5,7 @@ import {
   isLockedByMeasure,
   removeGateFromCircuit,
   moveGateInCircuit,
+  canPlaceTwoQubit,
 } from '../components/canvas/CircuitCanvas';
 import { GatePalette } from '../components/canvas/GatePalette';
 import type { Circuit } from '../types';
@@ -85,6 +86,77 @@ describe('B3 deleting a placed gate', () => {
   });
 });
 
+describe('C3 two-qubit placement checks both wires', () => {
+  it('accepts a column free on both wires', () => {
+    expect(canPlaceTwoQubit(withH, 0, 1, 1)).toBe(true);
+  });
+
+  it('rejects a column occupied on the control wire', () => {
+    // H sits on q0 column 0: a CNOT controlled by q0
+    // cannot also occupy column 0.
+    expect(canPlaceTwoQubit(withH, 0, 1, 0)).toBe(false);
+  });
+
+  it('rejects a column occupied on the target wire', () => {
+    const withXOnQ1: Circuit = {
+      version: 1,
+      num_qubits: 2,
+      gates: [{ id: 'g1', type: 'X', targets: [1], controls: [], column: 0 }],
+    };
+    expect(canPlaceTwoQubit(withXOnQ1, 0, 1, 0)).toBe(false);
+  });
+
+  it('rejects the same wire as control and target', () => {
+    expect(canPlaceTwoQubit(withH, 0, 0, 3)).toBe(false);
+  });
+});
+
+describe('C2 candidate target cells highlight during placement', () => {
+  it('highlights cells on every wire except the control', () => {
+    const placing = {
+      gate: { id: 'p1', type: 'CNOT' as const, targets: [0], controls: [], column: 1 },
+      control: 0,
+    };
+    render(
+      <CircuitCanvas circuit={empty} onChange={vi.fn()} numQubits={2} placingTwoQubit={placing} />
+    );
+    const controlCell = screen.getByRole('gridcell', { name: /^Qubit 0, column 1/ });
+    const targetCell = screen.getByRole('gridcell', { name: /^Qubit 1, column 1/ });
+    expect(targetCell.className).toContain('bg-brand-tint');
+    expect(controlCell.className).not.toContain('bg-brand-tint');
+  });
+
+  it('highlights nothing when no placement is pending', () => {
+    renderCanvas(empty);
+    const cell = screen.getByRole('gridcell', { name: /^Qubit 1, column 1/ });
+    expect(cell.className).not.toContain('bg-brand-tint');
+  });
+});
+
+describe('C5 Delete key removes a focused gate', () => {
+  it('removes the gate with Delete', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.keyDown(tile, { key: 'Delete' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0]).toEqual(empty);
+  });
+
+  it('removes the gate with Backspace', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.keyDown(tile, { key: 'Backspace' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores other keys', () => {
+    const onChange = renderCanvas(withH);
+    const tile = screen.getByRole('button', { name: /H gate on qubit 0/ });
+    fireEvent.keyDown(tile, { key: 'a' });
+    expect(onChange).toHaveBeenCalledTimes(0);
+  });
+});
+
 describe('B4 moving a placed gate', () => {
   it('moves a single-qubit gate to a new wire and column', () => {
     const moved = moveGateInCircuit(withH, 'g1', 1, 4);
@@ -143,7 +215,7 @@ describe('B4 moving a placed gate', () => {
       </>
     );
     const placed = screen.getByRole('button', { name: /H gate on qubit 0/ });
-    const palette = screen.getByRole('listitem', { name: /Pauli-X/ });
+    const palette = screen.getByRole('button', { name: /Pauli-X/ });
     console.log(
       'B4 aria-roledescription placed/palette:',
       placed.getAttribute('aria-roledescription'),

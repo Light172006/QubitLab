@@ -1,13 +1,16 @@
 import { Amplitude } from '../../types';
+import { signedFixed, degrees, fixed, labelForState } from '../../lib/format';
 
 interface AmplitudeTableProps {
   amplitudes: Record<string, Amplitude>;
   probabilities: Record<string, number>;
   /** Intermediate level adds the raw real/imaginary parts. */
   level?: 'beginner' | 'intermediate';
+  /** Relabels the basis states; the values are identical either way. */
+  bitOrder?: 'qiskit' | 'canvas';
 }
 
-export function AmplitudeTable({ amplitudes, probabilities, level = 'beginner' }: AmplitudeTableProps) {
+export function AmplitudeTable({ amplitudes, probabilities, level = 'beginner', bitOrder = 'qiskit' }: AmplitudeTableProps) {
   const rows = Object.entries(amplitudes)
     .filter(([, amp]) => Math.abs(amp.re) > 0.001 || Math.abs(amp.im) > 0.001)
     .sort(([a], [b]) => a.localeCompare(b));
@@ -41,16 +44,16 @@ export function AmplitudeTable({ amplitudes, probabilities, level = 'beginner' }
             const prob = probabilities[state] || 0;
             return (
               <tr key={state} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-2 py-1.5 font-mono text-text">{state}</td>
+                <td className="px-2 py-1.5 font-mono text-text">{labelForState(state, bitOrder)}</td>
                 {level === 'intermediate' && (
                   <>
-                    <td className="px-2 py-1.5 text-right font-mono text-text">{amp.re >= 0 ? '+' : ''}{amp.re.toFixed(4)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-text">{amp.im >= 0 ? '+' : ''}{amp.im.toFixed(4)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-text">{signedFixed(amp.re)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-text">{signedFixed(amp.im)}</td>
                   </>
                 )}
-                <td className="px-2 py-1.5 text-right font-mono text-text">{magnitude.toFixed(4)}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-text">{phase.toFixed(1)}°</td>
-                <td className="px-2 py-1.5 text-right font-mono font-semibold text-brand-text">{prob.toFixed(4)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-text">{fixed(magnitude, 4)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-text">{degrees(phase)}</td>
+                <td className="px-2 py-1.5 text-right font-mono font-semibold text-brand-text">{fixed(prob, 4)}</td>
               </tr>
             );
           })}
